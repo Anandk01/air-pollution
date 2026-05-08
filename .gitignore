@@ -13,7 +13,7 @@ __pycache__/
 # Project Specific
 backend/uploads/*.csv
 backend/models/*.pkl
-backend/.env
+# backend/.env (Removed to allow pushing)
 backend/.rag_cache/
 .kiro/
 *.zip
