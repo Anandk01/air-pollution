@@ -1,0 +1,19 @@
+# Node.js
+node_modules/
+dist/
+.DS_Store
+
+# Python
+venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+.ipynb_checkpoints/
+
+# Project Specific
+backend/uploads/*.csv
+backend/models/*.pkl
+# backend/.env (Removed to allow pushing)
+backend/.rag_cache/
+.kiro/
+*.zip
