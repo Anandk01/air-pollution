@@ -217,8 +217,7 @@ export default function Chatbot() {
   }
 
   return (
-    <div className="page-shell" style={{ background: "var(--bg-base)" }}>
-      <div style={{ flex: 1, display: "flex", flexDirection: "column", padding: "24px 32px 16px", maxWidth: 1200, margin: "0 auto", width: "100%", height: "calc(100vh - 68px - 24px - 16px)", minHeight: 0 }}>
+    <div style={{ display: "flex", flexDirection: "column", height: "calc(100vh - 56px)", margin: "-28px -32px", padding: "24px 32px 16px", minHeight: 0 }}>
         
         <PageHeader title="🤖 AirSight AI Chatbot" subtitle="Real-time health advisory and RAG-powered pollution insights">
           <SearchableCitySelector selectedCity={selectedCity} onSelect={setSelectedCity} cities={cities} />
@@ -259,7 +258,6 @@ export default function Chatbot() {
             </div>
           </div>
         </div>
-      </div>
     </div>
   );
 }

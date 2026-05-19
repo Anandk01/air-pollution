@@ -275,8 +275,7 @@ function Section({ title, subtitle, action, children, delay = 0 }) {
 // ─────────────────────────────────────────────────────────────────────────────
 function DashboardSkeleton() {
   return (
-    <div className="page-shell">
-      <div className="admin-main">
+    <div className="admin-main">
         <div style={{ marginBottom: 28 }}>
           <div className="skeleton" style={{ width: 200, height: 28, marginBottom: 10 }} />
           <div className="skeleton" style={{ width: 320, height: 14 }} />
@@ -288,7 +287,6 @@ function DashboardSkeleton() {
           <div className="skeleton" style={{ height: 300, borderRadius: 20 }} />
           <div className="skeleton" style={{ height: 300, borderRadius: 20 }} />
         </div>
-      </div>
     </div>
   );
 }
@@ -354,11 +352,9 @@ export default function Dashboard() {
 
   if (status === "loading") return <DashboardSkeleton />;
   if (status === "error") return (
-    <div className="page-shell">
-      <div className="admin-main">
+    <div className="admin-main">
         <PageHeader title="Live Air Quality Dashboard" subtitle="Real-time pollutant monitoring" />
         <ErrorState message={errMsg} onRetry={() => load(selectedCity)} />
-      </div>
     </div>
   );
 
@@ -393,8 +389,7 @@ export default function Dashboard() {
   const healthConditions = profile.healthConditions.join(" + ");
 
   return (
-    <div className="page-shell" style={{ background: "var(--bg-base)" }}>
-      <div className="admin-main">
+    <div className="admin-main">
         <PageHeader title="🌍 Live Air Quality Dashboard" subtitle={`Real-time pollutant data · ${aqiData.city}`}>
           <SearchableCitySelector selectedCity={selectedCity} onSelect={setSelectedCity} cities={cities} />
           <button className="btn-secondary" style={{ fontSize: 13 }} onClick={() => load(selectedCity)}>🔄 Refresh</button>
@@ -534,7 +529,6 @@ export default function Dashboard() {
           @media (max-width: 900px) { .dash-chart-row { grid-template-columns: 1fr !important; } }
           @keyframes pulse-dot { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }
         `}</style>
-      </div>
     </div>
   );
 }

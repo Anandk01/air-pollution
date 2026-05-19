@@ -1,7 +1,6 @@
 import React from 'react';
 import SatelliteHeatmap from '../components/SatelliteHeatmap';
 import RouteAQI from '../components/RouteAQI';
-import CommunityReports from '../components/CommunityReports';
 
 const SatelliteView = () => {
   return (
@@ -18,12 +17,7 @@ const SatelliteView = () => {
         </header>
 
         <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: '24px' }}>
-          {/* Route AQI Navigator — the main feature */}
           <RouteAQI />
-
-          <CommunityReports />
-
-          {/* Satellite Heatmap */}
           <SatelliteHeatmap />
           
           <div className="glass" style={{ padding: '24px', borderRadius: '24px' }}>

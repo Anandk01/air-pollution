@@ -15,26 +15,57 @@ log.addHandler(file_handler)
 class GEEService:
     def __init__(self):
         self.initialized = False
-        self.service_account = os.getenv("GEE_SERVICE_ACCOUNT")
-        self.key_file = os.getenv("GEE_SERVICE_ACCOUNT_FILE")
-        self.project = os.getenv("GEE_PROJECT")
-        
+        # Do NOT read env vars here — .env may not be loaded yet at import time.
+        # They are read lazily inside authenticate().
+
     def authenticate(self):
         if self.initialized:
             return True
-        
+
+        service_account = os.getenv("GEE_SERVICE_ACCOUNT")
+        key_file        = os.getenv("GEE_SERVICE_ACCOUNT_FILE")
+        project         = os.getenv("GEE_PROJECT")
+
+        if not key_file or not os.path.exists(key_file):
+            log.error("GEE_SERVICE_ACCOUNT_FILE not found or not set: %s", key_file)
+            return False
+
+        if not service_account:
+            log.error("GEE_SERVICE_ACCOUNT env var is not set.")
+            return False
+
+        if not project:
+            log.error("GEE_PROJECT env var is not set.")
+            return False
+
         try:
-            if self.key_file and os.path.exists(self.key_file):
-                log.info(f"Authenticating GEE with service account file: {self.key_file} for project: {self.project}")
-                credentials = ee.ServiceAccountCredentials(self.service_account, self.key_file)
-                ee.Initialize(credentials, project=self.project)
-                self.initialized = True
-                return True
-            else:
-                log.error("GEE_SERVICE_ACCOUNT_FILE not found or not set.")
-                return False
+            log.info("Authenticating GEE: account=%s  project=%s", service_account, project)
+            credentials = ee.ServiceAccountCredentials(service_account, key_file)
+            ee.Initialize(
+                credentials,
+                project=project,
+                opt_url="https://earthengine.googleapis.com",
+            )
+            self.initialized = True
+            log.info("GEE authenticated successfully.")
+            return True
+        except ee.EEException as e:
+            err = str(e)
+            log.error("GEE Authentication failed: %s", err)
+            if "serviceusage.serviceUsageConsumer" in err or "required permission" in err:
+                log.error(
+                    "FIX: Grant '%s' the role roles/serviceusage.serviceUsageConsumer at "
+                    "https://console.cloud.google.com/iam-admin/iam?project=%s",
+                    service_account, project,
+                )
+            elif "no project found" in err.lower():
+                log.error(
+                    "FIX: Ensure GEE_PROJECT is set and Earth Engine API is enabled at "
+                    "https://console.cloud.google.com/apis/library/earthengine.googleapis.com"
+                )
+            return False
         except Exception as e:
-            log.error(f"GEE Authentication failed: {e}")
+            log.error("GEE Authentication unexpected error: %s", e)
             return False
 
     def fetch_no2_data(self, lat=28.6139, lon=77.2090, date_str=None):

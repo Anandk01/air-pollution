@@ -79,8 +79,7 @@ export default function Alerts() {
   );
 
   return (
-    <div className="page-shell" style={{ background: "var(--bg-base)" }}>
-      <div className="admin-main">
+    <div className="admin-main">
         <PageHeader
           title="Alerts"
           subtitle="Monitor air quality threshold alerts across all stations"
@@ -177,7 +176,6 @@ export default function Alerts() {
             .data-table th:nth-child(6), .data-table td:nth-child(6) { display: none; }
           }
         `}</style>
-      </div>
     </div>
   );
 }

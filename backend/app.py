@@ -690,57 +690,80 @@ def satellite_aqi():
     """
     POST /api/satellite-aqi
     Input: { "city": "Delhi", "lat": 28.6, "lon": 77.2, "date": "YYYY-MM-DD" }
-    Output: { "no2_satellite": float, "aqi_prediction": float, "heatmap_geojson": GeoJSON }
+    Output: { "no2_satellite": float, "aqi_prediction": int, "aqi_status": str,
+              "satellite_available": bool, "heatmap_geojson": GeoJSON }
+
+    Derives AQI purely from satellite NO2 — no CSV or trained model required.
+    NO2 mol/m² → µg/m³ (×1e6 × 46.0055 / 22.4) → CPCB sub-index.
     """
-    body = request.get_json(force=True, silent=True) or {}
-    city = body.get("city", "Delhi")
-    lat = body.get("lat", 28.6)
-    lon = body.get("lon", 77.2)
+    body     = request.get_json(force=True, silent=True) or {}
+    city     = body.get("city", "Delhi")
+    lat      = float(body.get("lat", 28.6))
+    lon      = float(body.get("lon", 77.2))
     date_str = body.get("date")
 
-    # 1. Fetch Satellite Data
-    satellite_data = gee.fetch_no2_data(lat, lon, date_str)
-    no2_val = 0.0
+    # 1. Fetch satellite NO2 grid from GEE
+    satellite_data      = gee.fetch_no2_data(lat, lon, date_str)
+    no2_mol_m2          = 0.0
     satellite_available = False
-    heatmap_geojson = {"type": "FeatureCollection", "features": []}
+    heatmap_geojson     = {"type": "FeatureCollection", "features": []}
 
     if satellite_data:
         satellite_available = True
-        # IDW Interpolation at requested lat/lon
-        no2_val = idw_interpolation(lon, lat, satellite_data['lons'], satellite_data['lats'], satellite_data['no2'])
-        
-        # Generate Heatmap GeoJSON (Grid of points)
-        for i, plat in enumerate(satellite_data['lats']):
-            for j, plon in enumerate(satellite_data['lons']):
-                val = satellite_data['no2'][i][j]
+        no2_mol_m2 = idw_interpolation(
+            lon, lat,
+            satellite_data["lons"],
+            satellite_data["lats"],
+            satellite_data["no2"],
+        )
+        for i, plat in enumerate(satellite_data["lats"]):
+            for j, plon in enumerate(satellite_data["lons"]):
+                val = satellite_data["no2"][i][j]
                 if val > 0:
                     heatmap_geojson["features"].append({
                         "type": "Feature",
                         "geometry": {"type": "Point", "coordinates": [plon, plat]},
-                        "properties": {"no2": float(val)}
+                        "properties": {"no2": float(val)},
                     })
     else:
-        log.warning("Satellite data unavailable, falling back to OpenMeteo/Existing model features.")
+        log.warning("Satellite data unavailable for %s (%s, %s)", city, lat, lon)
 
-    # 2. Get Prediction (Fallback logic included in _build_predict_response)
-    # We pass the satellite NO2 as an extra feature
-    body['no2_satellite'] = no2_val
-    prediction_resp, status = _build_predict_response(body)
+    # 2. Convert NO2 mol/m² → µg/m³ then → CPCB AQI sub-index
+    #    1 mol NO2 = 46.0055 g; at STP 1 mol = 22.4 L = 22.4e-6 m³
+    #    → µg/m³ = mol/m² × (46.0055 / 22.4e-6) × 1e-6  [column → surface conc approx]
+    #    Simplified: µg/m³ ≈ no2_mol_m2 × 2054
+    no2_ug_m3   = no2_mol_m2 * 2054.0
+    aqi_val     = int(round(_sub_index("no2", no2_ug_m3)))
+    aqi_status  = _aqi_category(aqi_val)
 
-    if status != 200:
-        return jsonify(prediction_resp), status
+    # 3. If satellite unavailable fall back to a simple Open-Meteo NO2 lookup
+    if not satellite_available:
+        try:
+            resp = http_requests.get(
+                OPEN_METEO_URL,
+                params={"latitude": lat, "longitude": lon,
+                        "current": "nitrogen_dioxide", "timezone": "auto"},
+                timeout=8,
+            )
+            no2_fallback = resp.json().get("current", {}).get("nitrogen_dioxide") or 0.0
+            aqi_val    = int(round(_sub_index("no2", float(no2_fallback))))
+            aqi_status = _aqi_category(aqi_val)
+            log.info("Satellite fallback: Open-Meteo NO2=%.2f µg/m³ → AQI=%d", no2_fallback, aqi_val)
+        except Exception as exc:
+            log.warning("Open-Meteo fallback also failed: %s", exc)
 
-    result = {
-        "success": True,
-        "city": city,
-        "no2_satellite": no2_val,
+    log.info("satellite-aqi %s → NO2=%.6f mol/m² → AQI=%d (%s)  satellite=%s",
+             city, no2_mol_m2, aqi_val, aqi_status, satellite_available)
+
+    return jsonify({
+        "success":             True,
+        "city":                city,
+        "no2_satellite":       no2_mol_m2,
         "satellite_available": satellite_available,
-        "aqi_prediction": prediction_resp.get("predicted_pm25"),
-        "aqi_status": prediction_resp.get("aqi_status"),
-        "heatmap_geojson": heatmap_geojson
-    }
-
-    return jsonify(result), 200
+        "aqi_prediction":      aqi_val,
+        "aqi_status":          aqi_status,
+        "heatmap_geojson":     heatmap_geojson,
+    }), 200
 
 
 # ── Route AQI  ────────────────────────────────────────────────────────────────

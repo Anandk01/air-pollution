@@ -3,7 +3,7 @@ import logging
 import io
 from datetime import datetime, timezone
 from flask import Blueprint, request, jsonify, send_file
-from auth_api import serializer
+from auth_api import _serializer as serializer
 from reports_db import get_db
 from threshold_calculator import calculate_personal_threshold
 from report_card_generator import generate_report_card
@@ -19,7 +19,7 @@ def get_user_id(req):
     try:
         token = token.replace("Bearer ", "")
         if token == "null" or token == "undefined": return "guest_user"
-        return serializer.loads(token, salt="auth-salt", max_age=86400 * 30)
+        return serializer.loads(token, salt="auth-token", max_age=86400 * 30)
     except Exception:
         return "guest_user"
 
@@ -34,13 +34,27 @@ def get_profile():
         profile = conn.execute("SELECT * FROM user_profiles WHERE user_id = ?", (user_id,)).fetchone()
         
         if not profile and user_id == "guest_user":
-            # Return a default guest profile
+            # Guest user: still read real conditions and locations from DB
+            conditions = conn.execute("""
+                SELECT hc.id, hc.condition_name as name, hc.icon_name as icon
+                FROM user_health_conditions uhc
+                JOIN health_conditions hc ON uhc.condition_id = hc.id
+                WHERE uhc.user_id = 'guest_user'
+            """).fetchall()
+            loc_rows = conn.execute("SELECT * FROM user_locations WHERE user_id = 'guest_user'").fetchall()
+            locations = {row['location_type']: {
+                "address": row['address'], "lat": row['latitude'],
+                "lon": row['longitude'], "city": row['city']
+            } for row in loc_rows}
+            if not locations:
+                locations = {"home": {"address": "Delhi", "lat": 28.6139, "lon": 77.2090, "city": "Delhi"}}
+            from threshold_calculator import calculate_personal_threshold
             return jsonify({
                 "profile": {"full_name": "Guest User", "age": 25, "gender": "Other", "weight_kg": 70, "height_cm": 170, "bmi": 24.2, "is_smoker": False},
-                "health_conditions": [],
-                "locations": {"home": {"address": "Delhi", "lat": 28.6139, "lon": 77.2090, "city": "Delhi"}},
+                "health_conditions": [dict(c) for c in conditions],
+                "locations": locations,
                 "activities": [],
-                "personal_aqi_threshold": 150.0
+                "personal_aqi_threshold": calculate_personal_threshold('guest_user')
             })
             
         if not profile:
@@ -77,13 +91,13 @@ def get_profile():
 
         return jsonify({
             "profile": {
-                "full_name": profile['full_name'],
+                "full_name": profile['name'] if 'name' in profile.keys() else profile.get('full_name', ''),
                 "age": profile['age'],
                 "gender": profile['gender'],
                 "weight_kg": profile['weight_kg'],
                 "height_cm": profile['height_cm'],
-                "bmi": profile['bmi'],
-                "is_smoker": bool(profile['is_smoker'])
+                "bmi": round(profile['weight_kg'] / ((profile['height_cm']/100)**2), 2) if profile['weight_kg'] and profile['height_cm'] else 0,
+                "is_smoker": bool(profile['smoker'] if 'smoker' in profile.keys() else profile.get('is_smoker', False))
             },
             "health_conditions": [dict(c) for c in conditions],
             "locations": locations,
@@ -102,21 +116,30 @@ def update_profile():
     height = data.get("height_cm")
     bmi = None
     if weight and height:
-        bmi = round(weight / ((height/100) ** 2), 2)
+        bmi = round(float(weight) / ((float(height)/100) ** 2), 2)
+
+    # support both 'full_name' (frontend) and 'name' (old schema)
+    name_val = data.get('full_name') or data.get('name', '')
+    smoker_val = data.get('is_smoker', data.get('smoker', False))
 
     with get_db() as conn:
+        cols = [r[1] for r in conn.execute('PRAGMA table_info(user_profiles)').fetchall()]
+        has_full_name = 'full_name' in cols
+        name_col = 'full_name' if has_full_name else 'name'
+        smoker_col = 'is_smoker' if 'is_smoker' in cols else 'smoker'
+
         existing = conn.execute("SELECT 1 FROM user_profiles WHERE user_id = ?", (user_id,)).fetchone()
         if existing:
-            conn.execute("""
-                UPDATE user_profiles 
-                SET full_name=?, age=?, gender=?, weight_kg=?, height_cm=?, bmi=?, is_smoker=?, updated_at=?
+            conn.execute(f"""
+                UPDATE user_profiles
+                SET {name_col}=?, age=?, gender=?, weight_kg=?, height_cm=?, {smoker_col}=?, updated_at=?
                 WHERE user_id=?
-            """, (data['full_name'], data['age'], data['gender'], weight, height, bmi, data.get('is_smoker', False), datetime.now(timezone.utc).isoformat(), user_id))
+            """, (name_val, data.get('age'), data.get('gender'), weight, height, smoker_val, datetime.now(timezone.utc).isoformat(), user_id))
         else:
-            conn.execute("""
-                INSERT INTO user_profiles (user_id, full_name, age, gender, weight_kg, height_cm, bmi, is_smoker)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-            """, (user_id, data['full_name'], data['age'], data['gender'], weight, height, bmi, data.get('is_smoker', False)))
+            conn.execute(f"""
+                INSERT INTO user_profiles (user_id, {name_col}, age, gender, weight_kg, height_cm, {smoker_col})
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+            """, (user_id, name_val, data.get('age'), data.get('gender'), weight, height, smoker_val))
 
     return get_profile()
 
@@ -242,7 +265,7 @@ def get_saved_locations():
     with get_db() as conn:
         rows = conn.execute(
             """SELECT id, activity_name, latitude, longitude, address, city,
-                      preferred_transport_mode, preferred_time, created_at
+                      preferred_transport_mode, preferred_time, end_time, created_at
                FROM user_saved_locations
                WHERE user_id = ?
                ORDER BY activity_name""",
@@ -286,7 +309,8 @@ def add_saved_location():
     if mode not in VALID_MODES:
         return jsonify({"error": f"transport_mode must be one of {VALID_MODES}"}), 400
 
-    preferred_time = data.get('preferred_time')  # optional "HH:MM"
+    preferred_time = data.get('preferred_time')  # start time "HH:MM"
+    end_time       = data.get('end_time')         # end time "HH:MM"
     city           = (data.get('city') or '').strip() or None
 
     with get_db() as conn:
@@ -301,9 +325,9 @@ def add_saved_location():
         cur = conn.execute(
             """INSERT INTO user_saved_locations
                (user_id, activity_name, latitude, longitude, address, city,
-                preferred_transport_mode, preferred_time)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
-            (user_id, name, float(lat), float(lon), address, city, mode, preferred_time)
+                preferred_transport_mode, preferred_time, end_time)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            (user_id, name, float(lat), float(lon), address, city, mode, preferred_time, end_time)
         )
         new_id = cur.lastrowid
 

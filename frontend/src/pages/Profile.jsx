@@ -1,6 +1,7 @@
 import { useState } from "react";
 import PageHeader from "../components/PageHeader";
 import { useProfile } from "../context/ProfileContext";
+import ActivityLocations from "../components/ActivityLocations";
 
 export default function Profile() {
   const { profile, updateProfile } = useProfile();
@@ -20,8 +21,7 @@ export default function Profile() {
   const ALL_CONDITIONS = ["Asthma", "Heart disease", "Diabetes", "COPD", "Pregnant", "Allergies"];
 
   return (
-    <div className="page-shell" style={{ background: "var(--bg-base)", minHeight: "100vh", paddingBottom: "40px" }}>
-      <div className="admin-main" style={{ maxWidth: "800px", margin: "0 auto" }}>
+    <div className="admin-main" style={{ maxWidth: "800px", margin: "0 auto", paddingBottom: "40px" }}>
         
         {/* Header Profile Card */}
         <div className="glass animate-slide-up" style={{ 
@@ -132,16 +132,8 @@ export default function Profile() {
           <div style={{ padding: "16px 20px", borderBottom: "1px solid var(--border)", fontSize: 13, fontWeight: 800, color: "var(--muted)", letterSpacing: "1px" }}>
             📍 LOCATIONS
           </div>
-          <div style={{ padding: "10px 20px" }}>
-            {profile.locations.map((loc, i) => (
-              <div key={i} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "14px 0", borderBottom: i !== profile.locations.length - 1 ? "1px solid rgba(255,255,255,0.05)" : "none" }}>
-                <span style={{ color: "var(--muted)", width: "150px" }}>{loc.type}</span>
-                <div style={{ flex: 1, fontWeight: 600 }}>{loc.name}</div>
-                <span style={{ fontSize: 11, color: "var(--cyan)", background: "rgba(6, 182, 212, 0.1)", padding: "4px 10px", borderRadius: 12, border: "1px solid rgba(6, 182, 212, 0.3)" }}>
-                  {loc.badge}
-                </span>
-              </div>
-            ))}
+          <div style={{ padding: "20px" }}>
+            <ActivityLocations />
           </div>
         </div>
 
@@ -169,7 +161,6 @@ export default function Profile() {
           </div>
         </div>
 
-      </div>
     </div>
   );
 }

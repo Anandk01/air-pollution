@@ -33,141 +33,89 @@ const DestinationSelector = ({ locations, onSelect, selectedId }) => (
           transition: 'all 0.3s ease'
         }}
       >
-        {loc.activity_name === 'Gym' && '💪 '}
-        {loc.activity_name === 'Office' && '💼 '}
-        {loc.activity_name === 'Home' && '🏠 '}
-        {loc.activity_name === 'Hospital' && '🏥 '}
-        {loc.activity_name === 'College' && '🎓 '}
+        {({'Gym':'💪','Office':'💼','Home':'🏠','Hospital':'🏥','College':'🎓','School':'🏫','Park':'🌳','Jogging Park':'🏃','Mall':'🛍️','Temple':'🛕','Restaurant':'🍽️'})[loc.activity_name] || '📍'}{' '}
         {loc.activity_name}
       </button>
     ))}
   </div>
 );
 
-const RouteComparisonCard = ({ route, isSelected, onClick }) => {
-  const getRiskColor = (level) => {
-    if (level === 'Low') return '#22c55e';
-    if (level === 'Moderate') return '#eab308';
-    return '#ef4444';
-  };
-
-  return (
-    <div 
-      onClick={onClick}
-      className={`glass route-card ${isSelected ? 'glass-active' : ''}`}
-      style={{ 
-        padding: '18px', 
-        borderRadius: '20px', 
-        cursor: 'pointer', 
-        marginBottom: '14px',
-        transition: 'all 0.3s ease',
-        border: isSelected ? '2px solid rgba(34, 197, 94, 0.5)' : '2px solid transparent'
-      }}
-    >
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px' }}>
-        <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-          {route.is_recommended && (
-            <span style={{ 
-              padding: '5px 12px', borderRadius: '8px', fontSize: '11px', 
-              fontWeight: 'bold', background: '#22c55e', color: 'white' 
-            }}>
-              ⭐ SAFEST
-            </span>
-          )}
-          {route.label && !route.is_recommended && (
-            <span style={{ 
-              padding: '5px 12px', borderRadius: '8px', fontSize: '11px', 
-              fontWeight: 'bold', background: route.color, color: 'white' 
-            }}>
-              {route.label.toUpperCase()}
-            </span>
-          )}
-        </div>
-        <div style={{ 
-          fontSize: '12px', 
-          fontWeight: 'bold', 
-          color: getRiskColor(route.risk_level),
-          padding: '4px 10px',
-          borderRadius: '8px',
-          background: `${getRiskColor(route.risk_level)}20`
-        }}>
-          {route.risk_level} Risk
-        </div>
+const RouteComparisonCard = ({ route, isSelected, onClick }) => (
+  <div
+    onClick={onClick}
+    className={`glass route-card ${isSelected ? 'glass-active' : ''}`}
+    style={{
+      padding: '18px', borderRadius: '20px', cursor: 'pointer', marginBottom: '14px',
+      transition: 'all 0.3s ease',
+      border: `2px solid ${isSelected ? route.color : route.has_critical ? 'rgba(239,68,68,0.4)' : 'transparent'}`
+    }}
+  >
+    {/* Fire / critical hazard banner */}
+    {route.has_critical && (
+      <div style={{ marginBottom: 10, padding: '7px 12px', borderRadius: 8, background: 'rgba(239,68,68,0.15)', border: '1px solid rgba(239,68,68,0.4)', fontSize: 12, color: '#ef4444', fontWeight: 700 }}>
+        🔥 ACTIVE HAZARD — {[...new Set((route.hazards || []).filter(h => h.critical).map(h => h.type))].join(', ') || 'FIRE/CHEMICAL'} on this route
       </div>
+    )}
 
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '14px', marginBottom: '12px' }}>
-        <div>
-          <div style={{ fontSize: '11px', color: 'var(--muted)', marginBottom: '4px' }}>Duration</div>
-          <div style={{ fontSize: '18px', fontWeight: '700' }}>{route.duration_min} min</div>
-        </div>
-        <div>
-          <div style={{ fontSize: '11px', color: 'var(--muted)', marginBottom: '4px' }}>Distance</div>
-          <div style={{ fontSize: '18px', fontWeight: '700' }}>{route.distance_km} km</div>
-        </div>
-        <div>
-          <div style={{ fontSize: '11px', color: 'var(--muted)', marginBottom: '4px' }}>Exposure</div>
-          <div style={{ 
-            fontSize: '18px', 
-            fontWeight: '700', 
-            color: getRiskColor(route.risk_level)
-          }}>
-            {route.exposure_score.toFixed(1)}
-          </div>
-        </div>
+    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px' }}>
+      <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+        {route.is_recommended
+          ? <span style={{ padding: '5px 12px', borderRadius: '8px', fontSize: '11px', fontWeight: 'bold', background: '#22c55e', color: 'white' }}>⭐ SAFEST</span>
+          : <span style={{ padding: '5px 12px', borderRadius: '8px', fontSize: '11px', fontWeight: 'bold', background: route.color, color: 'white' }}>{(route.label || 'Route').toUpperCase()}</span>
+        }
+        {route.exceeds_threshold && (
+          <span style={{ padding: '5px 12px', borderRadius: '8px', fontSize: '11px', fontWeight: 'bold', background: 'rgba(239,68,68,0.15)', color: '#ef4444', border: '1px solid rgba(239,68,68,0.4)' }}>⚠️ UNSAFE FOR YOU</span>
+        )}
       </div>
-
-      <div style={{ 
-        display: 'flex', 
-        gap: '16px', 
-        fontSize: '12px', 
-        color: 'var(--muted)',
-        paddingTop: '12px',
-        borderTop: '1px solid rgba(255,255,255,0.1)'
-      }}>
-        <span>⚠️ {route.hazard_count} hazards</span>
-        <span>🔴 {route.high_risk_segments} danger zones</span>
+      <div style={{ fontSize: '12px', fontWeight: 'bold', color: route.color, padding: '4px 10px', borderRadius: '8px', background: `${route.color}20` }}>
+        {route.risk_level} Risk
       </div>
-
-      {route.breakdown && (
-        <div style={{ 
-          marginTop: '12px', 
-          padding: '10px', 
-          borderRadius: '10px', 
-          background: 'rgba(0,0,0,0.2)',
-          fontSize: '11px'
-        }}>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
-            <div>PM2.5: {(route.breakdown.pm25 * 100).toFixed(0)}%</div>
-            <div>NO₂: {(route.breakdown.no2 * 100).toFixed(0)}%</div>
-            <div>Reports: {(route.breakdown.reports * 100).toFixed(0)}%</div>
-            <div>Anomalies: {(route.breakdown.anomaly * 100).toFixed(0)}%</div>
-          </div>
-        </div>
-      )}
     </div>
-  );
-};
+
+    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '14px', marginBottom: '12px' }}>
+      <div><div style={{ fontSize: '11px', color: 'var(--muted)', marginBottom: '4px' }}>Duration</div><div style={{ fontSize: '18px', fontWeight: '700' }}>{route.duration_min} min</div></div>
+      <div><div style={{ fontSize: '11px', color: 'var(--muted)', marginBottom: '4px' }}>Distance</div><div style={{ fontSize: '18px', fontWeight: '700' }}>{route.distance_km} km</div></div>
+      <div><div style={{ fontSize: '11px', color: 'var(--muted)', marginBottom: '4px' }}>Exposure</div><div style={{ fontSize: '18px', fontWeight: '700', color: route.color }}>{route.exposure_score?.toFixed(2)}</div></div>
+    </div>
+
+    <div style={{ display: 'flex', gap: '16px', fontSize: '12px', color: 'var(--muted)', paddingTop: '12px', borderTop: '1px solid rgba(255,255,255,0.1)' }}>
+      <span>⚠️ {route.hazard_count} hazards</span>
+      <span>🌫️ ~{route.est_pm25} µg/m³</span>
+      <span style={{ color: route.exceeds_threshold ? '#ef4444' : '#22c55e' }}>
+        {route.exceeds_threshold ? '🔴' : '🟢'} Limit: {route.personal_threshold}
+      </span>
+    </div>
+  </div>
+);
 
 export default function SafeRouteNavigator() {
   const { profile } = useProfile();
   const [savedLocations, setSavedLocations] = useState([]);
   const [selectedDest, setSelectedDest] = useState(null);
   const [currentPos, setCurrentPos] = useState(null);
+  const [homePos, setHomePos] = useState(null);
+  const [useGPS, setUseGPS] = useState(false);
   const [routes, setRoutes] = useState([]);
   const [selectedRoute, setSelectedRoute] = useState(null);
   const [loading, setLoading] = useState(false);
   const [transportMode, setTransportMode] = useState('driving');
   const [gpsError, setGpsError] = useState(null);
+  const [noLocations, setNoLocations] = useState(false);
 
   const fetchLocations = useCallback(async () => {
     try {
       const res = await axios.get('/api/profile/saved-locations');
-      setSavedLocations(res.data.locations || []);
-      if (res.data.locations?.length > 0 && !selectedDest) {
-        setSelectedDest(res.data.locations[0]);
-      }
+      const locs = res.data.locations || [];
+      setSavedLocations(locs);
+      setNoLocations(locs.length === 0);
+      if (locs.length > 0 && !selectedDest) setSelectedDest(locs[0]);
+
+      // also fetch home location
+      const profRes = await axios.get('/api/profile/');
+      const h = profRes.data?.locations?.home;
+      if (h?.lat && h?.lon) setHomePos({ lat: h.lat, lon: h.lon, label: h.address || 'Home' });
     } catch (err) {
-      console.error("Failed to fetch locations", err);
+      console.error('Failed to fetch locations', err);
     }
   }, [selectedDest]);
 
@@ -191,32 +139,45 @@ export default function SafeRouteNavigator() {
 
   const startNavigation = async () => {
     if (!selectedDest) {
-      alert("Please select a destination");
+      alert('Please select a destination');
       return;
     }
-    
     setLoading(true);
     setGpsError(null);
-    
+
     try {
-      const gps = await getGPS();
-      setCurrentPos(gps);
+      let source = null;
+
+      if (useGPS) {
+        const gps = await getGPS();
+        source = gps;
+        setCurrentPos(gps);
+      } else if (homePos) {
+        source = { lat: homePos.lat, lon: homePos.lon };
+        setCurrentPos(source);
+      }
+      // if neither, backend will use saved home from DB
 
       const res = await axios.post('/api/routes/safe-navigate', {
-        source: gps,
+        ...(source ? { source } : {}),
         destination_id: selectedDest.id,
-        transport_mode: transportMode
+        transport_mode: transportMode,
       });
 
       if (res.data.success && res.data.routes) {
         setRoutes(res.data.routes);
-        const safest = res.data.routes.find(r => r.is_recommended) || res.data.routes[0];
-        setSelectedRoute(safest);
+        // Always select the recommended (green/safe) route by default
+        const recommended = res.data.routes.find(r => r.is_recommended)
+          || res.data.routes.find(r => !r.has_critical)
+          || res.data.routes[0];
+        setSelectedRoute(recommended);
+        if (res.data.all_routes_unsafe) {
+          setGpsError('⚠️ All routes pass through an active hazard. Showing least-dangerous option. Consider delaying your trip.');
+        }
       }
     } catch (err) {
-      console.error("Navigation failed", err);
-      setGpsError(err.response?.data?.error || err.message || "Failed to calculate routes");
-      alert("Failed to start navigation. Please check GPS permissions and try again.");
+      console.error('Navigation failed', err);
+      setGpsError(err.response?.data?.error || err.message || 'Failed to calculate routes');
     } finally {
       setLoading(false);
     }
@@ -225,8 +186,8 @@ export default function SafeRouteNavigator() {
   const hazards = selectedRoute?.hazards || [];
 
   return (
-    <div className="page-shell mesh-bg">
-      <div className="admin-main" style={{ display: 'flex', flexDirection: 'column', height: 'calc(100vh - 68px)', gap: '20px', padding: '24px' }}>
+    <div style={{ display: "flex", flexDirection: "column", height: "calc(100vh - 56px)", gap: "20px", padding: "0", margin: "-28px -32px" }}>
+      <div style={{ display: "flex", flexDirection: "column", flex: 1, gap: "20px", padding: "24px", minHeight: 0 }}>
         
         <div className="animate-fade-in">
           <h2 style={{ fontSize: '28px', fontWeight: '800', marginBottom: '6px' }} className="gradient-text">
@@ -236,11 +197,17 @@ export default function SafeRouteNavigator() {
             AI-powered route planning based on real-time pollution, health profile, and community reports
           </p>
           
-          <DestinationSelector 
-            locations={savedLocations} 
-            onSelect={setSelectedDest} 
-            selectedId={selectedDest?.id} 
-          />
+          {noLocations ? (
+            <div style={{ padding: '12px 16px', borderRadius: 12, background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.3)', color: '#ef4444', fontSize: 13 }}>
+              ⚠️ No saved locations found. <a href="/profile" style={{ color: '#ef4444', fontWeight: 700 }}>Add locations in your profile</a> to use safe navigation.
+            </div>
+          ) : (
+            <DestinationSelector 
+              locations={savedLocations} 
+              onSelect={setSelectedDest} 
+              selectedId={selectedDest?.id} 
+            />
+          )}
         </div>
 
         <div style={{ display: 'grid', gridTemplateColumns: '380px 1fr', gap: '24px', flex: 1, minHeight: 0 }}>
@@ -248,6 +215,30 @@ export default function SafeRouteNavigator() {
           <div style={{ display: 'flex', flexDirection: 'column', height: '100%', gap: '16px' }}>
             
             <div className="glass" style={{ padding: '22px', borderRadius: '24px' }}>
+              <div style={{ fontSize: '13px', fontWeight: '600', marginBottom: '12px', color: 'var(--muted)' }}>
+                Start From
+              </div>
+              <div style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
+                <button
+                  onClick={() => setUseGPS(false)}
+                  style={{ flex: 1, padding: '10px 8px', borderRadius: 12, fontSize: 13, cursor: 'pointer', fontWeight: 600, transition: 'all 0.2s',
+                    background: !useGPS ? 'var(--blue)' : 'rgba(255,255,255,0.05)', color: !useGPS ? '#fff' : 'var(--text)', border: '1px solid var(--border)' }}
+                >
+                  🏠 {homePos ? homePos.label?.split(',')[0] : 'Home Address'}
+                </button>
+                <button
+                  onClick={() => setUseGPS(true)}
+                  style={{ flex: 1, padding: '10px 8px', borderRadius: 12, fontSize: 13, cursor: 'pointer', fontWeight: 600, transition: 'all 0.2s',
+                    background: useGPS ? 'var(--blue)' : 'rgba(255,255,255,0.05)', color: useGPS ? '#fff' : 'var(--text)', border: '1px solid var(--border)' }}
+                >
+                  📡 Live GPS
+                </button>
+              </div>
+              {!homePos && !useGPS && (
+                <div style={{ fontSize: 12, color: '#f59e0b', marginBottom: 12, padding: '8px 12px', borderRadius: 8, background: 'rgba(245,158,11,0.1)', border: '1px solid rgba(245,158,11,0.3)' }}>
+                  ⚠️ No home address saved. <a href="/profile" style={{ color: '#f59e0b', fontWeight: 700 }}>Set it in your profile</a> or use Live GPS.
+                </div>
+              )}
               <div style={{ fontSize: '13px', fontWeight: '600', marginBottom: '12px', color: 'var(--muted)' }}>
                 Transport Mode
               </div>
@@ -349,28 +340,19 @@ export default function SafeRouteNavigator() {
               />
               <MapAutoCenter coords={currentPos} />
 
-              {routes.filter(r => r.route_index !== selectedRoute?.route_index).map(r => (
-                <Polyline 
-                  key={`alt-${r.route_index}`}
+              {/* All routes — each colored by their own score */}
+              {routes.map(r => (
+                <Polyline
+                  key={`route-${r.route_index}`}
                   positions={r.coordinates}
                   pathOptions={{
-                    color: '#94a3b8',
-                    weight: 5,
-                    opacity: 0.4
+                    color: r.color,
+                    weight: selectedRoute?.route_index === r.route_index ? 7 : 4,
+                    opacity: selectedRoute?.route_index === r.route_index ? 0.95 : 0.45,
+                    dashArray: r.has_critical ? '10 6' : undefined,
                   }}
                 />
               ))}
-
-              {selectedRoute && (
-                <Polyline 
-                  positions={selectedRoute.coordinates}
-                  pathOptions={{
-                    color: selectedRoute.color,
-                    weight: 7,
-                    opacity: 0.9
-                  }}
-                />
-              )}
 
               {hazards.map((h, i) => (
                 <CircleMarker 
@@ -399,7 +381,7 @@ export default function SafeRouteNavigator() {
 
               {currentPos && (
                 <Marker position={[currentPos.lat, currentPos.lon]}>
-                  <Popup>📍 Your Current Location</Popup>
+                  <Popup>📍 {useGPS ? 'Your Current Location' : '🏠 Home'}</Popup>
                 </Marker>
               )}
               

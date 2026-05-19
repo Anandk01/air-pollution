@@ -18,7 +18,8 @@ CREATE TABLE IF NOT EXISTS user_saved_locations (
     city                    TEXT,
     preferred_transport_mode TEXT DEFAULT 'driving'
         CHECK (preferred_transport_mode IN ('driving','walking','bicycling','transit')),
-    preferred_time          TEXT,                           -- "08:30" — when user usually travels there
+    preferred_time          TEXT,                           -- "08:30" start time
+    end_time                TEXT,                           -- "09:30" end time
     -- Future: aqi_alert_enabled BOOLEAN DEFAULT 1
     -- Future: geofence_radius_m INTEGER DEFAULT 500
     created_at              TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
