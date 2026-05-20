@@ -74,7 +74,12 @@ const Legend = () => {
 
 const MapUpdater = ({ center }) => {
   const map = useMap();
+  const prevCenter = useRef(null);
   useEffect(() => {
+    if (!center) return;
+    const [lat, lon] = center;
+    if (prevCenter.current && prevCenter.current[0] === lat && prevCenter.current[1] === lon) return;
+    prevCenter.current = center;
     map.setView(center, 12);
   }, [center, map]);
   return null;
@@ -90,6 +95,7 @@ const SatelliteHeatmap = () => {
   const [citySuggestions, setCitySuggestions] = useState([]);
   const [prediction, setPrediction] = useState(null);
   const debounceRef = useRef(null);
+  const mapCenter = useMemo(() => [selectedCity.lat, selectedCity.lon], [selectedCity.lat, selectedCity.lon]);
 
   // Geocode city/place name via Nominatim
   const handleCitySearch = (query) => {
@@ -117,14 +123,14 @@ const SatelliteHeatmap = () => {
     setCitySuggestions([]);
   };
 
-  const fetchData = async (date) => {
+  const fetchData = async (date, city) => {
     setLoading(true);
     setError(null);
     try {
       const response = await axios.post('/api/satellite-aqi', {
-        city: selectedCity.name,
-        lat: selectedCity.lat,
-        lon: selectedCity.lon,
+        city: city.name,
+        lat: city.lat,
+        lon: city.lon,
         date: date
       });
       if (response.data.success) {
@@ -142,8 +148,8 @@ const SatelliteHeatmap = () => {
   };
 
   useEffect(() => {
-    fetchData(selectedDate);
-  }, [selectedDate, selectedCity]);
+    fetchData(selectedDate, selectedCity);
+  }, [selectedDate, selectedCity.lat, selectedCity.lon]);
 
   return (
     <div className="glass" style={{ borderRadius: '24px', overflow: 'hidden', height: '600px', position: 'relative', display: 'flex', flexDirection: 'column' }}>
@@ -254,7 +260,7 @@ const SatelliteHeatmap = () => {
             <div style={{ color: '#ef4444', fontWeight: 700, marginBottom: '8px' }}>Error</div>
             <div style={{ fontSize: '14px' }}>{error}</div>
             <button
-              onClick={() => fetchData(selectedDate)}
+              onClick={() => fetchData(selectedDate, selectedCity)}
               style={{ marginTop: '12px', background: 'var(--blue)', color: 'white', border: 'none', padding: '6px 16px', borderRadius: '8px', cursor: 'pointer' }}
             >
               Retry
@@ -262,9 +268,9 @@ const SatelliteHeatmap = () => {
           </div>
         )}
 
-        <MapContainer center={[selectedCity.lat, selectedCity.lon]} zoom={12} style={{ height: '100%', width: '100%' }} zoomControl={false}>
+        <MapContainer center={mapCenter} zoom={12} style={{ height: '100%', width: '100%' }} zoomControl={false}>
           <TileLayer url="https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png" />
-          <MapUpdater center={[selectedCity.lat, selectedCity.lon]} />
+          <MapUpdater center={mapCenter} />
           <HeatmapLayer data={data} />
           <Legend />
         </MapContainer>

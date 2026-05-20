@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { MapContainer, TileLayer, Polyline, CircleMarker, Marker, Popup, useMap } from 'react-leaflet';
 import 'leaflet/dist/leaflet.css';
 import L from 'leaflet';
@@ -20,23 +20,154 @@ const MapAutoCenter = ({ coords }) => {
   return null;
 };
 
+const PLACE_ICONS = {
+  'Gym': '💪', 'Office': '💼', 'Home': '🏠', 'Hospital': '🏥',
+  'College': '🎓', 'School': '🏫', 'Park': '🌳', 'Jogging Park': '🏃',
+  'Mall': '🛍️', 'Temple': '🛕', 'Restaurant': '🍽️', 'Work': '💼',
+};
+
+// ── Nominatim search ─────────────────────────────────────────────────────────────────
+const OSM_ICONS = {
+  hospital: '🏥', school: '🏫', college: '🎓', university: '🎓',
+  restaurant: '🍽️', cafe: '☕', fast_food: '🍔', pharmacy: '💊',
+  bank: '🏦', fuel: '⛽', parking: '🅿️', place_of_worship: '🛕',
+  gym: '💪', cinema: '🎬', library: '📚', police: '👮',
+  bus_station: '🚌', railway_station: '🚉', shop: '🛍️',
+};
+
+function placeIcon(cat, type) {
+  return OSM_ICONS[type] || OSM_ICONS[cat]
+    || (cat === 'highway' ? '🛣️' : cat === 'railway' ? '🚉'
+      : cat === 'shop' ? '🛍️' : cat === 'leisure' ? '🌳'
+      : cat === 'tourism' ? '🏨' : '📍');
+}
+
+function DestinationSearch({ onSelect, selectedName }) {
+  const [query,   setQuery]   = useState('');
+  const [results, setResults] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [open,    setOpen]    = useState(false);
+  const debounceRef  = useRef(null);
+  const containerRef = useRef(null);
+
+  useEffect(() => {
+    const handler = e => {
+      if (containerRef.current && !containerRef.current.contains(e.target)) setOpen(false);
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, []);
+
+  useEffect(() => {
+    clearTimeout(debounceRef.current);
+    if (query.length < 2) { setResults([]); return; }
+    debounceRef.current = setTimeout(async () => {
+      setLoading(true);
+      try {
+        const { data } = await axios.get('https://nominatim.openstreetmap.org/search', {
+          params: { q: query, format: 'json', addressdetails: 1, namedetails: 1,
+                    extratags: 1, limit: 8 },
+          headers: { 'Accept-Language': 'en' },
+        });
+        setResults(data.map(r => ({
+          short: r.namedetails?.name || r.address?.road
+            || r.address?.neighbourhood || r.address?.suburb
+            || r.display_name.split(',')[0],
+          display: r.display_name,
+          category: r.class, type: r.type,
+          lat: parseFloat(r.lat), lon: parseFloat(r.lon),
+        })));
+      } catch { setResults([]); }
+      finally { setLoading(false); }
+    }, 350);
+    return () => clearTimeout(debounceRef.current);
+  }, [query]);
+
+  return (
+    <div ref={containerRef} style={{ position: 'relative', marginBottom: 12 }}>
+      <div style={{ position: 'relative' }}>
+        <span style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', fontSize: 14, pointerEvents: 'none', opacity: 0.6 }}>🔍</span>
+        <input
+          type="text"
+          value={query}
+          onChange={e => { setQuery(e.target.value); setOpen(true); }}
+          onFocus={e => { e.target.style.borderColor = '#6366f1'; setOpen(true); }}
+          onBlur={e  => { e.target.style.borderColor = 'var(--border)'; }}
+          placeholder={selectedName ? `📍 ${selectedName}` : 'Search roads, areas, shops, hospitals…'}
+          style={{
+            width: '100%', padding: '11px 36px 11px 36px',
+            borderRadius: 12, fontSize: 13, outline: 'none',
+            background: 'var(--bg-card)', border: '1px solid var(--border)',
+            color: 'var(--text)', transition: 'border-color 0.2s',
+          }}
+        />
+        {loading && <span style={{ position: 'absolute', right: 12, top: '50%', transform: 'translateY(-50%)', fontSize: 11, color: 'var(--muted)' }}>⏳</span>}
+        {query && !loading && (
+          <button onClick={() => { setQuery(''); setResults([]); setOpen(false); }}
+            style={{ position: 'absolute', right: 10, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', color: 'var(--muted)', fontSize: 18, lineHeight: 1, padding: 2 }}>×</button>
+        )}
+      </div>
+
+      {open && (results.length > 0 || (query.length >= 2 && !loading)) && (
+        <div style={{
+          position: 'absolute', top: 'calc(100% + 6px)', left: 0, right: 0,
+          background: 'var(--bg-surface)', border: '1px solid var(--border)',
+          borderRadius: 14, zIndex: 9999, maxHeight: 300, overflowY: 'auto',
+          boxShadow: '0 12px 40px rgba(0,0,0,0.5)',
+        }}>
+          {results.length === 0 ? (
+            <div style={{ padding: '14px 16px', fontSize: 13, color: 'var(--muted)', textAlign: 'center' }}>No results for "{query}"</div>
+          ) : results.map((r, i) => (
+            <div key={i}
+              onClick={() => { onSelect(r); setQuery(''); setOpen(false); }}
+              style={{ display: 'flex', alignItems: 'flex-start', gap: 10, padding: '10px 14px', cursor: 'pointer',
+                borderBottom: i < results.length - 1 ? '1px solid var(--border-subtle)' : 'none', transition: 'background 0.15s' }}
+              onMouseEnter={e => e.currentTarget.style.background = 'var(--bg-card)'}
+              onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+            >
+              <span style={{ fontSize: 18, flexShrink: 0, marginTop: 1 }}>{placeIcon(r.category, r.type)}</span>
+              <div style={{ minWidth: 0 }}>
+                <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{r.short}</div>
+                <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 2, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{r.display}</div>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 const DestinationSelector = ({ locations, onSelect, selectedId }) => (
-  <div style={{ display: 'flex', gap: '10px', overflowX: 'auto', padding: '10px 0', scrollbarWidth: 'none' }}>
-    {locations.map(loc => (
-      <button
-        key={loc.id}
-        onClick={() => onSelect(loc)}
-        className={`glass ${selectedId === loc.id ? 'glass-active' : ''}`}
-        style={{ 
-          padding: '12px 24px', borderRadius: '20px', whiteSpace: 'nowrap', 
-          fontSize: '14px', fontWeight: '600', cursor: 'pointer', flexShrink: 0,
-          transition: 'all 0.3s ease'
-        }}
-      >
-        {({'Gym':'💪','Office':'💼','Home':'🏠','Hospital':'🏥','College':'🎓','School':'🏫','Park':'🌳','Jogging Park':'🏃','Mall':'🛍️','Temple':'🛕','Restaurant':'🍽️'})[loc.activity_name] || '📍'}{' '}
-        {loc.activity_name}
-      </button>
-    ))}
+  <div style={{ display: 'flex', gap: '8px', overflowX: 'auto', padding: '4px 0 10px', scrollbarWidth: 'none' }}>
+    {locations.map(loc => {
+      const isSelected = selectedId === loc.id;
+      const icon = PLACE_ICONS[loc.activity_name] || '📍';
+      return (
+        <button
+          key={loc.id}
+          onClick={() => onSelect(loc)}
+          style={{
+            display: 'flex', alignItems: 'center', gap: 7,
+            padding: '9px 18px', borderRadius: 12, whiteSpace: 'nowrap',
+            fontSize: '13px', fontWeight: isSelected ? 700 : 500,
+            cursor: 'pointer', flexShrink: 0,
+            transition: 'all 0.15s ease',
+            background: isSelected ? '#6366f1' : 'rgba(255,255,255,0.06)',
+            color: isSelected ? '#fff' : 'var(--muted)',
+            border: isSelected ? '2px solid #818cf8' : '2px solid transparent',
+            boxShadow: isSelected ? '0 0 0 3px rgba(99,102,241,0.25), 0 4px 12px rgba(99,102,241,0.4)' : 'none',
+            outline: 'none',
+          }}
+          onMouseDown={e  => { e.currentTarget.style.transform = 'scale(0.94)'; }}
+          onMouseUp={e    => { e.currentTarget.style.transform = ''; }}
+          onMouseLeave={e => { e.currentTarget.style.transform = ''; }}
+        >
+          <span style={{ fontSize: 16 }}>{icon}</span>
+          {loc.activity_name}
+        </button>
+      );
+    })}
   </div>
 );
 
@@ -219,20 +350,32 @@ export default function SafeRouteNavigator() {
                 Start From
               </div>
               <div style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
-                <button
-                  onClick={() => setUseGPS(false)}
-                  style={{ flex: 1, padding: '10px 8px', borderRadius: 12, fontSize: 13, cursor: 'pointer', fontWeight: 600, transition: 'all 0.2s',
-                    background: !useGPS ? 'var(--blue)' : 'rgba(255,255,255,0.05)', color: !useGPS ? '#fff' : 'var(--text)', border: '1px solid var(--border)' }}
-                >
-                  🏠 {homePos ? homePos.label?.split(',')[0] : 'Home Address'}
-                </button>
-                <button
-                  onClick={() => setUseGPS(true)}
-                  style={{ flex: 1, padding: '10px 8px', borderRadius: 12, fontSize: 13, cursor: 'pointer', fontWeight: 600, transition: 'all 0.2s',
-                    background: useGPS ? 'var(--blue)' : 'rgba(255,255,255,0.05)', color: useGPS ? '#fff' : 'var(--text)', border: '1px solid var(--border)' }}
-                >
-                  📡 Live GPS
-                </button>
+                {[
+                  { id: false, label: '🏠 Home' },
+                  { id: true,  label: '📡 Live GPS' },
+                ].map(({ id, label }) => {
+                  const active = useGPS === id;
+                  return (
+                    <button
+                      key={String(id)}
+                      onClick={() => setUseGPS(id)}
+                      style={{
+                        flex: 1, padding: '10px 8px', borderRadius: 12, fontSize: 13,
+                        cursor: 'pointer', fontWeight: active ? 700 : 500,
+                        background: active ? '#6366f1' : 'rgba(255,255,255,0.06)',
+                        color: active ? '#fff' : 'var(--muted)',
+                        border: active ? '2px solid #818cf8' : '2px solid transparent',
+                        boxShadow: active ? '0 0 0 3px rgba(99,102,241,0.25)' : 'none',
+                        transition: 'all 0.15s', outline: 'none',
+                      }}
+                      onMouseDown={e  => { e.currentTarget.style.transform = 'scale(0.95)'; }}
+                      onMouseUp={e    => { e.currentTarget.style.transform = ''; }}
+                      onMouseLeave={e => { e.currentTarget.style.transform = ''; }}
+                    >
+                      {label}
+                    </button>
+                  );
+                })}
               </div>
               {!homePos && !useGPS && (
                 <div style={{ fontSize: 12, color: '#f59e0b', marginBottom: 12, padding: '8px 12px', borderRadius: 8, background: 'rgba(245,158,11,0.1)', border: '1px solid rgba(245,158,11,0.3)' }}>
@@ -244,28 +387,33 @@ export default function SafeRouteNavigator() {
               </div>
               <div style={{ display: 'flex', gap: '10px', marginBottom: '18px' }}>
                 {[
-                  { mode: 'driving', icon: '🚗', label: 'Drive' },
-                  { mode: 'walking', icon: '🚶', label: 'Walk' },
-                  { mode: 'bicycling', icon: '🚲', label: 'Bike' }
-                ].map(({ mode, icon, label }) => (
-                  <button 
-                    key={mode}
-                    onClick={() => setTransportMode(mode)}
-                    className={`glass ${transportMode === mode ? 'glass-active' : ''}`}
-                    style={{ 
-                      flex: 1, 
-                      padding: '12px 8px', 
-                      borderRadius: '14px', 
-                      fontSize: '13px', 
-                      cursor: 'pointer',
-                      fontWeight: '600',
-                      transition: 'all 0.3s ease'
-                    }}
-                  >
-                    <div>{icon}</div>
-                    <div style={{ fontSize: '11px', marginTop: '4px' }}>{label}</div>
-                  </button>
-                ))}
+                  { mode: 'driving',   icon: '🚗', label: 'Drive' },
+                  { mode: 'walking',   icon: '🚶', label: 'Walk'  },
+                  { mode: 'bicycling', icon: '🚲', label: 'Bike'  }
+                ].map(({ mode, icon, label }) => {
+                  const active = transportMode === mode;
+                  return (
+                    <button
+                      key={mode}
+                      onClick={() => setTransportMode(mode)}
+                      style={{
+                        flex: 1, padding: '12px 8px', borderRadius: 14,
+                        fontSize: 13, cursor: 'pointer', fontWeight: active ? 700 : 500,
+                        transition: 'all 0.15s', outline: 'none',
+                        background: active ? '#6366f1' : 'rgba(255,255,255,0.06)',
+                        color:      active ? '#fff'    : 'var(--muted)',
+                        border:     active ? '2px solid #818cf8' : '2px solid transparent',
+                        boxShadow:  active ? '0 0 0 3px rgba(99,102,241,0.25), 0 4px 12px rgba(99,102,241,0.4)' : 'none',
+                      }}
+                      onMouseDown={e  => { e.currentTarget.style.transform = 'scale(0.94)'; }}
+                      onMouseUp={e    => { e.currentTarget.style.transform = ''; }}
+                      onMouseLeave={e => { e.currentTarget.style.transform = ''; }}
+                    >
+                      <div style={{ fontSize: 18 }}>{icon}</div>
+                      <div style={{ fontSize: 11, marginTop: 4 }}>{label}</div>
+                    </button>
+                  );
+                })}
               </div>
 
               <button 

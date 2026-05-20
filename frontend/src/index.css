@@ -122,11 +122,16 @@ body {
   -webkit-backdrop-filter: blur(12px);
   border: 1px solid rgba(255, 255, 255, 0.1);
   box-shadow: 0 4px 12px var(--shadow);
-  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  transition: all 0.15s cubic-bezier(0.4, 0, 0.2, 1);
 }
 .glass:hover {
   background: rgba(255, 255, 255, 0.08);
   border-color: rgba(255, 255, 255, 0.2);
+}
+/* glass used as a button gets press feedback */
+button.glass:active, a.glass:active {
+  transform: scale(0.96);
+  filter: brightness(0.85);
 }
 .glass-active {
   background: rgba(99, 102, 241, 0.12);
@@ -247,14 +252,13 @@ body {
   font-weight: 500;
   color: var(--muted);
   text-decoration: none;
-  transition: all 0.18s ease;
+  transition: all 0.15s ease;
   white-space: nowrap;
   overflow: hidden;
+  user-select: none;
 }
-.sidebar-link:hover {
-  background: var(--bg-card);
-  color: var(--text);
-}
+.sidebar-link:hover  { background: var(--bg-card); color: var(--text); }
+.sidebar-link:active { background: rgba(99,102,241,0.1); color: var(--blue); transform: scale(0.97); }
 .sidebar-link.active {
   background: rgba(99,102,241,0.15);
   color: var(--blue);
@@ -328,9 +332,11 @@ body {
   font-size: 16px;
   display: flex; align-items: center; justify-content: center;
   color: var(--text);
-  transition: background 0.18s;
+  transition: background 0.15s, transform 0.1s;
+  user-select: none;
 }
-.icon-btn:hover { background: var(--bg-card); }
+.icon-btn:hover  { background: var(--bg-card); }
+.icon-btn:active { background: var(--bg-card); transform: scale(0.9); filter: brightness(0.85); }
 
 .user-btn {
   display: flex; align-items: center; gap: 8px;
@@ -339,10 +345,12 @@ body {
   border: 1px solid var(--border);
   background: transparent;
   cursor: pointer;
-  transition: background 0.18s;
+  transition: background 0.15s, transform 0.1s;
   color: var(--text);
+  user-select: none;
 }
-.user-btn:hover { background: var(--bg-card); }
+.user-btn:hover  { background: var(--bg-card); }
+.user-btn:active { background: var(--bg-card); transform: scale(0.97); filter: brightness(0.88); }
 
 .user-avatar {
   width: 28px; height: 28px;
@@ -382,9 +390,12 @@ body {
   font-size: 13px;
   cursor: pointer;
   transition: background 0.15s;
+  user-select: none;
 }
-.dropdown-item:hover { background: var(--bg-card); }
-.dropdown-item.danger { color: var(--red); }
+.dropdown-item:hover  { background: var(--bg-card); }
+.dropdown-item:active { background: rgba(99,102,241,0.12); color: var(--blue); }
+.dropdown-item.danger        { color: var(--red); }
+.dropdown-item.danger:active { background: rgba(239,68,68,0.1); }
 .dropdown-divider { height: 1px; background: var(--border); margin: 4px 0; }
 
 /* ── Page content ───────────────────────────────────────────────────────────── */
@@ -435,9 +446,11 @@ body {
   cursor: pointer;
   background: linear-gradient(135deg, #6366f1, #8b5cf6);
   box-shadow: 0 2px 12px rgba(99,102,241,0.3);
-  transition: all 0.2s ease;
+  transition: all 0.15s ease;
+  user-select: none;
 }
-.btn-primary:hover:not(:disabled) { transform: translateY(-1px); box-shadow: 0 6px 20px rgba(99,102,241,0.4); }
+.btn-primary:hover:not(:disabled)  { transform: translateY(-1px); box-shadow: 0 6px 20px rgba(99,102,241,0.4); }
+.btn-primary:active:not(:disabled) { transform: translateY(1px) scale(0.98); box-shadow: 0 1px 6px rgba(99,102,241,0.3); filter: brightness(0.9); }
 .btn-primary:disabled { opacity: 0.55; cursor: not-allowed; }
 
 .btn-secondary {
@@ -449,9 +462,11 @@ body {
   border: 1px solid var(--border);
   cursor: pointer;
   background: var(--bg-surface);
-  transition: all 0.2s ease;
+  transition: all 0.15s ease;
+  user-select: none;
 }
-.btn-secondary:hover:not(:disabled) { background: var(--bg-card); transform: translateY(-1px); }
+.btn-secondary:hover:not(:disabled)  { background: var(--bg-card); transform: translateY(-1px); }
+.btn-secondary:active:not(:disabled) { transform: translateY(1px) scale(0.98); background: var(--bg-card); filter: brightness(0.92); }
 [data-theme="light"] .btn-secondary { background: #fff; border-color: #e2e8f0; }
 [data-theme="light"] .btn-secondary:hover { background: #f8fafc; }
 
