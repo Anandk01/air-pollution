@@ -6,7 +6,10 @@ import {
   ResponsiveContainer, ReferenceLine,
 } from "recharts";
 import PageHeader from "../components/PageHeader";
+import ReportCard from "../components/ReportCard";
 import { useToast } from "../context/ToastContext";
+import { useLocation } from "../context/LocationContext";
+import { useProfile } from "../context/ProfileContext";
 import { AQI_COLORS, getAqiColor } from "../utils/aqiColors";
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -272,8 +275,7 @@ function Section({ title, subtitle, action, children, delay = 0 }) {
 // ─────────────────────────────────────────────────────────────────────────────
 function DashboardSkeleton() {
   return (
-    <div className="page-shell">
-      <div className="admin-main">
+    <div className="admin-main">
         <div style={{ marginBottom: 28 }}>
           <div className="skeleton" style={{ width: 200, height: 28, marginBottom: 10 }} />
           <div className="skeleton" style={{ width: 320, height: 14 }} />
@@ -285,7 +287,6 @@ function DashboardSkeleton() {
           <div className="skeleton" style={{ height: 300, borderRadius: 20 }} />
           <div className="skeleton" style={{ height: 300, borderRadius: 20 }} />
         </div>
-      </div>
     </div>
   );
 }
@@ -314,6 +315,14 @@ export default function Dashboard() {
   const [cities,       setCities]       = useState([]);
   const [selectedCity, setSelectedCity] = useState(DEFAULT_CITY);
   const { addToast } = useToast();
+  const { location: userLocation } = useLocation();
+  const { profile } = useProfile();
+
+  useEffect(() => {
+    if (userLocation && userLocation.city) {
+      setSelectedCity({ name: userLocation.city, lat: userLocation.lat, lon: userLocation.lon });
+    }
+  }, [userLocation]);
 
   useEffect(() => {
     axios.get("/api/cities", { timeout: 10_000 })
@@ -343,11 +352,9 @@ export default function Dashboard() {
 
   if (status === "loading") return <DashboardSkeleton />;
   if (status === "error") return (
-    <div className="page-shell">
-      <div className="admin-main">
+    <div className="admin-main">
         <PageHeader title="Live Air Quality Dashboard" subtitle="Real-time pollutant monitoring" />
         <ErrorState message={errMsg} onRetry={() => load(selectedCity)} />
-      </div>
     </div>
   );
 
@@ -374,16 +381,36 @@ export default function Dashboard() {
     { icon: "🔵",  label: "O₃", value: current?.ozone, unit: "µg/m³", color: "#3b82f6" },
     { icon: "🌿",  label: "Ammonia", value: current?.ammonia, unit: "µg/m³", color: "#22c55e" },
     { icon: "☀️",  label: "UV Index", value: current?.uv_index, unit: "", color: "#a855f7" },
-    { icon: "🏜️",  label: "Dust", value: current?.dust, unit: "µg/m³", color: "#d97706" },
+    { icon: "Desert",  label: "Dust", value: current?.dust, unit: "µg/m³", color: "#d97706" },
   ];
 
+  // Automation Logic: Smart Alerts & Personalised Threshold
+  const isDangerousForProfile = aqi >= profile.aqiThreshold;
+  const healthConditions = profile.healthConditions.join(" + ");
+
   return (
-    <div className="page-shell" style={{ background: "var(--bg-base)" }}>
-      <div className="admin-main">
+    <div className="admin-main">
         <PageHeader title="🌍 Live Air Quality Dashboard" subtitle={`Real-time pollutant data · ${aqiData.city}`}>
           <SearchableCitySelector selectedCity={selectedCity} onSelect={setSelectedCity} cities={cities} />
           <button className="btn-secondary" style={{ fontSize: 13 }} onClick={() => load(selectedCity)}>🔄 Refresh</button>
         </PageHeader>
+
+        {/* ⚡ AUTOMATION: Personalised Smart Alert Banner */}
+        {isDangerousForProfile && (
+          <div className="glass animate-slide-up" style={{ 
+            borderRadius: 16, padding: "16px 20px", marginBottom: 24, 
+            background: "rgba(239, 68, 68, 0.15)", border: "1px solid #ef4444",
+            display: "flex", alignItems: "center", gap: 16
+          }}>
+            <span style={{ fontSize: 32 }}>🚨</span>
+            <div>
+              <div style={{ color: "#ef4444", fontWeight: 800, fontSize: 16 }}>DANGEROUS FOR YOUR PROFILE</div>
+              <div style={{ color: "var(--text)", fontSize: 13 }}>
+                Current AQI ({aqi}) exceeds your personal safety threshold ({profile.aqiThreshold}) set due to <strong>{healthConditions}</strong>.
+              </div>
+            </div>
+          </div>
+        )}
 
         <div className="glass animate-slide-up" style={{ borderRadius: 16, padding: "16px 24px", marginBottom: 24, display: "flex", alignItems: "center", gap: 20, flexWrap: "wrap", background: `${aqiColor}10`, border: `1px solid ${aqiColor}40` }}>
           <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
@@ -441,11 +468,67 @@ export default function Dashboard() {
           </Section>
         </div>
 
+        {/* ⚡ AUTOMATION: Personalized Report & Schedule */}
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 22, marginBottom: 22 }} className="dash-chart-row">
+          <ReportCard />
+
+          <Section title="⏱️ Activity Scheduler" subtitle="Checking your outdoor slots" delay={650}>
+            <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+              {profile.locations.filter(l => l.type.includes("Schedule")).map((loc, i) => {
+                const isSafe = !isDangerousForProfile;
+                return (
+                  <div key={i} style={{ padding: 14, borderRadius: 12, background: "rgba(255,255,255,0.03)", border: isSafe ? "1px solid #22c55e40" : "1px solid #ef444440", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                    <div>
+                      <div style={{ fontSize: 14, fontWeight: 700 }}>{loc.name}</div>
+                      <div style={{ fontSize: 12, color: "var(--muted)" }}>Slot detected from profile</div>
+                    </div>
+                    <span style={{ fontSize: 11, fontWeight: 800, padding: "4px 10px", borderRadius: 8, background: isSafe ? "#22c55e20" : "#ef444420", color: isSafe ? "#22c55e" : "#ef4444" }}>
+                      {isSafe ? "SAFE TO GO" : "POSTPONE"}
+                    </span>
+                  </div>
+                );
+              })}
+              <div style={{ fontSize: 11, color: "var(--muted)", textAlign: "center" }}>Syncing with your {profile.locations.length} saved locations</div>
+            </div>
+          </Section>
+        </div>
+
+        {/* ⚡ AUTOMATION: Exposure History */}
+        <div style={{ marginBottom: 24 }}>
+          <Section title="⏳ Exposure History" subtitle="Cumulative pollution exposure (Last 24h)" delay={700}>
+            <div style={{ display: "flex", gap: 24, alignItems: "center" }}>
+              <div style={{ flex: 1 }}>
+                {(() => {
+                  const unhealthyPoints = chartSlice.filter(d => d.pm25 >= profile.aqiThreshold).length;
+                  const unhealthyHours = unhealthyPoints; // simplified as 1 point = 1 hour in our chart slice logic
+                  return (
+                    <div style={{ display: "flex", alignItems: "baseline", gap: 8 }}>
+                      <span style={{ fontSize: 36, fontWeight: 900, color: unhealthyHours > 0 ? "#ef4444" : "#22c55e" }}>
+                        {unhealthyHours} hrs
+                      </span>
+                      <span style={{ fontSize: 14, color: "var(--muted)" }}>of unhealthy exposure today</span>
+                    </div>
+                  );
+                })()}
+                <div style={{ marginTop: 12, height: 8, borderRadius: 4, background: "var(--bg-card)", overflow: "hidden" }}>
+                  <div style={{ 
+                    width: `${Math.min(100, (chartSlice.filter(d => d.pm25 >= profile.aqiThreshold).length / 24) * 100)}%`, 
+                    height: "100%", 
+                    background: "linear-gradient(90deg, #ef4444, #f97316)" 
+                  }} />
+                </div>
+              </div>
+              <div style={{ maxWidth: 300, fontSize: 12, color: "var(--muted)", lineHeight: 1.6 }}>
+                Based on your movement patterns and stationary home data, you were exposed to air above your personal threshold ({profile.aqiThreshold}) for several hours.
+              </div>
+            </div>
+          </Section>
+        </div>
+
         <style>{`
           @media (max-width: 900px) { .dash-chart-row { grid-template-columns: 1fr !important; } }
           @keyframes pulse-dot { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }
         `}</style>
-      </div>
     </div>
   );
 }

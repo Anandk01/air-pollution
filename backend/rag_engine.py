@@ -264,11 +264,15 @@ def generate_answer(query: str, aqi_context: dict, chunks: list[dict]) -> dict:
 
     # ── Build prompt ──────────────────────────────────────────────────────────
     prompt = (
-        "You are an air quality health advisor. Be concise and practical.\n"
+        "You are a friendly, casual, and conversational air quality health advisor. "
+        "IMPORTANT RULES:\n"
+        "1. Do NOT use any markdown formatting like asterisks (** or *) in your response. Keep it plain and clean.\n"
+        "2. If the user message is just a greeting like 'hi', 'hello', or 'hey', greet them back warmly first before bringing up air quality.\n"
+        "3. Keep the conversation natural and casual.\n\n"
         f"Current air quality: {live_aqi_context}\n"
         f"Relevant research:\n{chunk_texts}\n\n"
-        f"User question: {query}\n"
-        "Answer with specific health precautions, symptoms to watch for, and recommendations."
+        f"User message: {query}\n"
+        "Answer conversationally based on the rules."
     )
 
     # ── API key check ─────────────────────────────────────────────────────────

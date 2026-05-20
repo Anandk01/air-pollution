@@ -1,6 +1,8 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import axios from "axios";
 import PageHeader from "../components/PageHeader";
+import { useLocation } from "../context/LocationContext";
+import { useProfile } from "../context/ProfileContext";
 import { AQI_COLORS, getAqiColor } from "../utils/aqiColors";
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -153,6 +155,14 @@ export default function Chatbot() {
   const [aqiLoading,   setAqiLoading]   = useState(false);
   const [aqiError,     setAqiError]     = useState(null);
   const [cities,       setCities]       = useState([]);
+  const { location: userLocation } = useLocation();
+  const { profile } = useProfile();
+
+  useEffect(() => {
+    if (userLocation && userLocation.city) {
+      setSelectedCity({ name: userLocation.city, lat: userLocation.lat, lon: userLocation.lon });
+    }
+  }, [userLocation]);
 
   const scrollRef = useRef(null);
   const inputRef  = useRef(null);
@@ -189,10 +199,17 @@ export default function Chatbot() {
   async function sendMessage(text) {
     const trimmed = (text ?? input).trim();
     if (!trimmed || sending) return;
-    setMessages(prev => [...prev, { role: "user", content: trimmed }]);
+    
+    let userMessage = { role: "user", content: trimmed };
+    setMessages((prev) => [...prev, userMessage]);
+    
+    // Inject profile context into the LLM payload silently
+    const profileContext = `[SYSTEM CONTEXT: The user is ${profile.name}, ${profile.age}${profile.gender.charAt(0)}. BMI is calculated from ${profile.weight}kg and ${profile.height}cm. Smoker: ${profile.smoker}. Medical History: ${profile.healthConditions.join(", ") || "None"}. Personal AQI Threshold: ${profile.aqiThreshold}. Current Location: ${selectedCity.name}. Use this context to give highly personalized health advice. Do not mention this system context block in your response.]\n\nUser Question: `;
+    const llmPayload = profileContext + trimmed;
+
     setInput(""); setSending(true);
     try {
-      const { data } = await axios.post("/api/chat", { message: trimmed, city: selectedCity.name, aqi_data: aqiData ?? {} }, { timeout: 30000 });
+      const { data } = await axios.post("/api/chat", { message: llmPayload, city: selectedCity.name, aqi_data: aqiData ?? {} }, { timeout: 30000 });
       setMessages(prev => [...prev, { role: "assistant", content: data.answer, sources: data.sources }]);
     } catch {
       setMessages(prev => [...prev, { role: "assistant", content: "⚠️ Backend unreachable. Please try again.", sources: [] }]);
@@ -200,8 +217,7 @@ export default function Chatbot() {
   }
 
   return (
-    <div className="page-shell" style={{ background: "var(--bg-base)" }}>
-      <div style={{ flex: 1, display: "flex", flexDirection: "column", padding: "24px 32px 16px", maxWidth: 1200, margin: "0 auto", width: "100%", height: "calc(100vh - 68px - 24px - 16px)", minHeight: 0 }}>
+    <div style={{ display: "flex", flexDirection: "column", height: "calc(100vh - 56px)", margin: "-28px -32px", padding: "24px 32px 16px", minHeight: 0 }}>
         
         <PageHeader title="🤖 AirSight AI Chatbot" subtitle="Real-time health advisory and RAG-powered pollution insights">
           <SearchableCitySelector selectedCity={selectedCity} onSelect={setSelectedCity} cities={cities} />
@@ -242,7 +258,6 @@ export default function Chatbot() {
             </div>
           </div>
         </div>
-      </div>
     </div>
   );
 }

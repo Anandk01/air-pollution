@@ -174,7 +174,7 @@ export default function IndiaMap() {
 
   return (
     <div className="page-shell mesh-bg">
-      <div className="admin-main" style={{ height: "calc(100vh - 80px)", display: "flex", flexDirection: "column" }}>
+      <div className="admin-main" style={{ height: "calc(100vh - 56px)", display: "flex", flexDirection: "column" }}>
         {/* Header */}
         <div style={{ marginBottom: 20 }}>
           <h1 className="gradient-text" style={{ fontSize: 28, fontWeight: 900, marginBottom: 4 }}>Interactive AQI Map</h1>

@@ -1,4 +1,5 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import axios from "axios";
 import PageHeader from "../components/PageHeader";
 
 const SEED_ALERTS = [
@@ -38,16 +39,47 @@ const SUMMARY = [
 export default function Alerts() {
   const [filter, setFilter] = useState("All");
   const [search, setSearch] = useState("");
+  const [communityAlerts, setCommunityAlerts] = useState([]);
+  const [loading, setLoading] = useState(true);
 
-  const visible = SEED_ALERTS.filter(a =>
+  useEffect(() => {
+    const fetchCommunityReports = async () => {
+      try {
+        const { data } = await axios.get("/api/reports/active");
+        if (data.success) {
+          const mapped = data.reports.map(r => ({
+            id: `rep-${r.id}`,
+            location: `${r.lat.toFixed(4)}, ${r.lon.toFixed(4)}`,
+            pollutant: r.incident_type,
+            aqi: r.severity * 20, 
+            level: r.severity >= 4 ? "Hazardous" : r.severity >= 3 ? "Unhealthy" : "Moderate",
+            time: new Date(r.reported_at).toLocaleString(),
+            status: r.verified ? "Verified" : "Active",
+            trust: Math.round(r.trust_score * 100) + "%",
+            upvotes: r.upvote_count,
+            description: r.description
+          }));
+          setCommunityAlerts(mapped);
+        }
+      } catch (err) {
+        console.error("Failed to fetch community reports", err);
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchCommunityReports();
+  }, []);
+
+  const allAlerts = [...SEED_ALERTS, ...communityAlerts];
+
+  const visible = allAlerts.filter(a =>
     (filter === "All" || a.status === filter) &&
     (a.location.toLowerCase().includes(search.toLowerCase()) ||
      a.pollutant.toLowerCase().includes(search.toLowerCase()))
   );
 
   return (
-    <div className="page-shell" style={{ background: "var(--bg-base)" }}>
-      <div className="admin-main">
+    <div className="admin-main">
         <PageHeader
           title="Alerts"
           subtitle="Monitor air quality threshold alerts across all stations"
@@ -75,7 +107,7 @@ export default function Alerts() {
             style={{ flex: "1 1 220px", maxWidth: 320 }}
           />
           <div style={{ display: "flex", gap: 6 }}>
-            {["All", "Active", "Resolved"].map(f => (
+            {["All", "Active", "Verified", "Resolved"].map(f => (
               <button key={f} onClick={() => setFilter(f)} style={{
                 padding: "8px 16px", borderRadius: 10, fontSize: 13, fontWeight: 500,
                 cursor: "pointer", transition: "all 0.2s",
@@ -99,11 +131,11 @@ export default function Alerts() {
               <tr>
                 <th>#</th>
                 <th>Location</th>
-                <th>Pollutant</th>
-                <th>AQI</th>
+                <th>Incident / Pollutant</th>
+                <th>AQI / Severity</th>
                 <th>Level</th>
                 <th>Time</th>
-                <th>Status</th>
+                <th>Status / Trust</th>
               </tr>
             </thead>
             <tbody>
@@ -129,9 +161,8 @@ export default function Alerts() {
                     </td>
                     <td style={{ color: "var(--muted)", fontSize: 12, whiteSpace: "nowrap" }}>{a.time}</td>
                     <td>
-                      <span className="badge" style={{ background: sc.bg, color: sc.text }}>
-                        {a.status}
-                      </span>
+                      <div style={{ fontSize: 13, color: "var(--text)" }}>{a.status}</div>
+                      {a.trust && <div style={{ fontSize: 10, color: "var(--muted)" }}>Trust: {a.trust}</div>}
                     </td>
                   </tr>
                 );
@@ -145,7 +176,6 @@ export default function Alerts() {
             .data-table th:nth-child(6), .data-table td:nth-child(6) { display: none; }
           }
         `}</style>
-      </div>
     </div>
   );
 }

@@ -1,0 +1,2 @@
+2026-05-14 17:58:51,691 - ERROR - GEE Authentication failed: ee.Initialize: no project found. Call with project= or see http://goo.gle/ee-auth.
+2026-05-14 17:59:24,236 - ERROR - GEE Authentication failed: Caller does not have required permission to use project air-pollution-3499a. Grant the caller the roles/serviceusage.serviceUsageConsumer role, or a custom role with the serviceusage.services.use permission, by visiting https://console.developers.google.com/iam-admin/iam?project=air-pollution-3499a and then retry. Propagation of the new permission may take a few minutes.

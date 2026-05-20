@@ -1,14 +1,20 @@
 import { NavLink, useLocation } from "react-router-dom";
 import { useState, useEffect } from "react";
 import { useTheme } from "../context/ThemeContext";
+import { useAuth } from "../context/AuthContext";
 
 const NAV_LINKS = [
   { to: "/",          label: "Chatbot",    icon: "🤖" },
   { to: "/dashboard", label: "Dashboard",  icon: "📊" },
   { to: "/map",       label: "India Map",  icon: "🗺️" },
+  { to: "/satellite", label: "Satellite",  icon: "🛰️" },
+  { to: "/safe-routes", label: "Safe Routes", icon: "🛡️" },
   { to: "/predict",   label: "Predict",    icon: "🔮" },
   { to: "/alerts",    label: "Alerts",     icon: "🔔" },
+  { to: "/anomalies", label: "Anomalies",  icon: "⚠️" },
+  { to: "/profile",   label: "Profile",    icon: "👤" },
   { to: "/upload",    label: "Upload",     icon: "📁" },
+  { to: "/admin",     label: "Admin",      icon: "🔧" },
 ];
 
 export default function Navbar() {
@@ -17,6 +23,7 @@ export default function Navbar() {
   const [apiOk,    setApiOk]    = useState(null);
   const location                = useLocation();
   const { dark, toggle: toggleTheme } = useTheme();
+  const { user, logout, isAuthenticated } = useAuth();
 
   useEffect(() => setOpen(false), [location]);
 
@@ -87,6 +94,25 @@ export default function Navbar() {
             </NavLink>
           ))}
         </div>
+
+            {/* Auth Actions */}
+            <div style={{ marginRight: 16, display: "flex", alignItems: "center", gap: 12 }} className="hidden-mobile">
+              {isAuthenticated ? (
+                <>
+                  <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end" }}>
+                    <span style={{ fontSize: 12, fontWeight: 700 }}>{user.email.split('@')[0]}</span>
+                    <span style={{ fontSize: 10, color: "var(--muted)" }}>Logged In</span>
+                  </div>
+                  <button onClick={logout} className="btn-secondary" style={{ padding: "6px 12px", fontSize: 12, cursor: "pointer" }}>
+                    Logout
+                  </button>
+                </>
+              ) : (
+                <NavLink to="/auth" className="btn-primary" style={{ padding: "8px 20px", fontSize: 13, textDecoration: "none" }}>
+                  Login
+                </NavLink>
+              )}
+            </div>
 
         {/* Theme toggle */}
         <button

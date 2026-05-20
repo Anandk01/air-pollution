@@ -8,6 +8,7 @@ Routes:
   GET  /api/dashboard      — unified dashboard data
   POST /api/train          — preprocess → feature engineering → train → save best model
   POST /api/predict        — rolling prediction for 1 / 6 / 24 hours ahead
+  POST /api/predict-with-anomaly — prediction plus anomaly evaluation for latest reading
   GET  /api/export-report  — downloadable PDF report
   GET  /api/air-quality    — live pollutant data from Open-Meteo + CPCB AQI
   GET  /api/cities         — list of major Indian cities with lat/lon
@@ -24,10 +25,20 @@ import requests as http_requests
 from dotenv import load_dotenv
 load_dotenv()          # reads .env before anything else
 
+from gee_service import GEEService, idw_interpolation
+gee = GEEService()
+
 import pandas as pd
 import numpy as np
 import joblib
 
+from notifications import push_bp, get_notifications
+from auth_api import auth_bp
+from admin_api import admin_bp
+from profile_service import profile_bp
+from scheduler_service import init_scheduler
+from route_pollution_service import route_bp
+from safe_route_service import safe_route_bp
 from flask import Flask, jsonify, request
 from flask_cors import CORS
 from werkzeug.utils import secure_filename
@@ -59,7 +70,22 @@ for d in (UPLOAD_FOLDER, MODEL_FOLDER):
 app = Flask(__name__)
 app.config["UPLOAD_FOLDER"]      = UPLOAD_FOLDER
 app.config["MAX_CONTENT_LENGTH"] = MAX_UPLOAD_MB * 1024 * 1024
+# Enable CORS for all routes so the React frontend on :5173 can talk to us
 CORS(app, resources={r"/api/*": {"origins": "*"}})
+
+app.register_blueprint(push_bp, url_prefix="/api/push")
+app.register_blueprint(auth_bp, url_prefix="/api/auth")
+app.register_blueprint(admin_bp, url_prefix="/api/admin")
+app.register_blueprint(profile_bp, url_prefix="/api/profile")
+app.register_blueprint(route_bp, url_prefix="/api/routes")
+app.register_blueprint(safe_route_bp, url_prefix="/api/routes")
+
+# ── Community Reports Blueprint ───────────────────────────────────────────────
+from reports_api import reports_bp
+app.register_blueprint(reports_bp)
+
+from pollution_fusion import set_gee_instance
+set_gee_instance(gee)
 
 # ── XGBoost (optional) ────────────────────────────────────────────────────────
 try:
@@ -310,12 +336,16 @@ def train_models():
     df = df.dropna(subset=["lag1", "lag2", "lag24", "rolling_mean_24"]).reset_index(drop=True)
     log.info("After lag/rolling drops: %d rows", len(df))
 
+    if "no2_satellite" not in df.columns:
+        df["no2_satellite"] = 0.0  # Default value if not present in dataset
+        log.info("no2_satellite column missing in dataset, filling with 0.0")
+
     if len(df) < 30:
         return jsonify({"success": False,
                         "message": "Not enough rows after feature engineering. Need ≥ 30."}), 400
 
     # ── 6. 80/20 time-based split ─────────────────────────────────────────────
-    FEATURES = ["hour", "day", "month", "weekday", "lag1", "lag2", "lag24", "rolling_mean_24"]
+    FEATURES = ["hour", "day", "month", "weekday", "lag1", "lag2", "lag24", "rolling_mean_24", "no2_satellite"]
     TARGET   = "pm25"
 
     split_idx = int(len(df) * 0.80)
@@ -475,18 +505,32 @@ def get_dashboard():
         "min":  round(float(df["pm25"].min()),  2),
     }
 
+    last_anomaly = None
+    if ANOMALY_AVAILABLE:
+        try:
+            extra = {
+                k: df[k].iloc[-1]
+                for k in ("PM10", "NO2", "SO2", "CO", "wind_speed", "wind_direction", "humidity", "temperature")
+                if k in df.columns
+            }
+            last_anomaly = detect_anomaly(current_pm25, last_dt.to_pydatetime(), extra)
+        except Exception as exc:
+            log.warning("Dashboard anomaly detection failed: %s", exc)
+
     return jsonify({
-        "success":        True,
-        "current_pm25":   current_pm25,
-        "aqi_status":     _aqi_label(current_pm25),
-        "best_model":     best_model_name,
-        "best_rmse":      best_rmse,
-        "records_count":  records_count,
-        "last_updated":   last_dt.isoformat(),
-        "dataset_file":   os.path.basename(csv_path),
-        "hourly_stats":   hourly_stats,
-        "recent_trend":   recent_trend,
-        "model_metrics":  model_metrics,
+        "success":          True,
+        "current_pm25":     current_pm25,
+        "aqi_status":       _aqi_label(current_pm25),
+        "best_model":       best_model_name,
+        "best_rmse":        best_rmse,
+        "records_count":    records_count,
+        "last_updated":     last_dt.isoformat(),
+        "dataset_file":     os.path.basename(csv_path),
+        "hourly_stats":     hourly_stats,
+        "recent_trend":     recent_trend,
+        "model_metrics":    model_metrics,
+        "anomaly_available": ANOMALY_AVAILABLE,
+        "last_anomaly":     last_anomaly,
     }), 200
 
 
@@ -501,37 +545,17 @@ def _aqi_label(pm25: float) -> str:
 
 
 # ── Predict ───────────────────────────────────────────────────────────────────
-@app.route("/api/predict", methods=["POST"])
-def predict():
-    """
-    Load saved best_model.pkl, rebuild features from the latest CSV's tail,
-    and roll the prediction forward for the requested horizon.
-
-    Input JSON:  { "hours_ahead": 1 | 6 | 24 }
-
-    Output JSON:
-    {
-      "success": true,
-      "hours_ahead": 6,
-      "predicted_pm25": 88.4,
-      "aqi_status": "Moderate",
-      "model": "XGBoost",
-      "last_known_pm25": 95.2,
-      "last_known_datetime": "2024-11-30T18:30:00+00:00"
-    }
-    """
-    # ── 1. Parse input ────────────────────────────────────────────────────────
-    body        = request.get_json(force=True, silent=True) or {}
+def _build_predict_response(body: dict) -> tuple[dict, int]:
+    body = body or {}
     hours_ahead = int(body.get("hours_ahead", 1))
     if hours_ahead not in (1, 6, 24):
-        return jsonify({"success": False,
-                        "message": "hours_ahead must be 1, 6, or 24."}), 400
+        return {"success": False,
+                "message": "hours_ahead must be 1, 6, or 24."}, 400
 
-    # ── 2. Load model ─────────────────────────────────────────────────────────
     model_path = os.path.join(MODEL_FOLDER, "best_model.pkl")
     if not os.path.exists(model_path):
-        return jsonify({"success": False,
-                        "message": "No trained model found. Call /api/train first."}), 404
+        return {"success": False,
+                "message": "No trained model found. Call /api/train first."}, 404
 
     try:
         saved      = joblib.load(model_path)
@@ -539,14 +563,13 @@ def predict():
         features   = saved["features"]
         model_name = saved["name"]
     except Exception as exc:
-        return jsonify({"success": False,
-                        "message": f"Failed to load model: {exc}"}), 500
+        return {"success": False,
+                "message": f"Failed to load model: {exc}"}, 500
 
-    # ── 3. Load & prepare dataset ─────────────────────────────────────────────
     csv_path = _latest_csv()
     if not csv_path:
-        return jsonify({"success": False,
-                        "message": "No dataset found. Upload a CSV first."}), 404
+        return {"success": False,
+                "message": "No dataset found. Upload a CSV first."}, 404
 
     try:
         df        = pd.read_csv(csv_path)
@@ -558,8 +581,8 @@ def predict():
         raw_date = _detect_col(df.columns.tolist(), DATE_CANDIDATES)
 
         if not raw_pm25 or not raw_date:
-            return jsonify({"success": False,
-                            "message": "Cannot detect PM2.5 or datetime column."}), 400
+            return {"success": False,
+                    "message": "Cannot detect PM2.5 or datetime column."}, 400
 
         col_map = {}
         if raw_pm25 != "pm25":    col_map[raw_pm25] = "pm25"
@@ -571,33 +594,28 @@ def predict():
         df = df.dropna(subset=["datetime", "pm25"]).sort_values("datetime").reset_index(drop=True)
 
     except Exception as exc:
-        return jsonify({"success": False,
-                        "message": f"Error reading dataset: {exc}"}), 500
+        return {"success": False,
+                "message": f"Error reading dataset: {exc}"}, 500
 
     if len(df) < 24:
-        return jsonify({"success": False,
-                        "message": f"Need ≥ 24 data rows to build features. Found {len(df)}."}), 400
+        return {"success": False,
+                "message": f"Need ≥ 24 data rows to build features. Found {len(df)}."}, 400
 
-    # ── 4. Build rolling window and predict iteratively ───────────────────────
-    # Keep a mutable deque of recent pm25 values (most recent last)
-    # The dataset is at 15-min intervals; 1 step ≈ 15 minutes.
-    # We map hours_ahead → step count (4 steps per hour).
     STEPS_PER_HOUR = 4
-    steps = hours_ahead * STEPS_PER_HOUR   # 4 | 24 | 96
+    steps = hours_ahead * STEPS_PER_HOUR
 
-    recent_vals = list(df["pm25"].values)  # full history, we use the tail
+    recent_vals = list(df["pm25"].values)
     last_dt     = df["datetime"].iloc[-1]
 
     last_known_pm25 = round(float(recent_vals[-1]), 2)
     last_known_dt   = last_dt.isoformat()
 
     predicted_pm25 = None
-
     for step in range(1, steps + 1):
         target_dt = last_dt + pd.Timedelta(minutes=15 * step)
 
         lag1  = recent_vals[-1]
-        lag2  = recent_vals[-2] if len(recent_vals) >= 2  else lag1
+        lag2  = recent_vals[-2] if len(recent_vals) >= 2 else lag1
         lag24 = recent_vals[-24] if len(recent_vals) >= 24 else recent_vals[0]
         rolling_mean_24 = float(np.mean(recent_vals[-24:]))
 
@@ -610,30 +628,284 @@ def predict():
             "lag2":            lag2,
             "lag24":           lag24,
             "rolling_mean_24": rolling_mean_24,
+            "no2_satellite":   body.get("no2_satellite", 0.0)
         }
         X = pd.DataFrame([row])[features]
         predicted_pm25 = float(model.predict(X)[0])
-        predicted_pm25 = max(0.0, predicted_pm25)   # no negative PM2.5
-
-        # Feed prediction back into the rolling window for next step
+        predicted_pm25 = max(0.0, predicted_pm25)
         recent_vals.append(predicted_pm25)
 
     predicted_pm25 = round(predicted_pm25, 2)
 
-    # ── 5. Return ─────────────────────────────────────────────────────────────
+    response = {
+        "success":             True,
+        "hours_ahead":         hours_ahead,
+        "predicted_pm25":      predicted_pm25,
+        "aqi_status":          _aqi_label(predicted_pm25),
+        "model":               model_name,
+        "last_known_pm25":     last_known_pm25,
+        "last_known_datetime": last_known_dt,
+        "anomaly_available":   ANOMALY_AVAILABLE,
+    }
+
+    if ANOMALY_AVAILABLE:
+        try:
+            dt_obj = last_dt.to_pydatetime() if hasattr(last_dt, "to_pydatetime") else last_dt
+            extra = {
+                k: body.get(k)
+                for k in ("PM10", "NO2", "SO2", "CO", "wind_speed", "wind_direction", "humidity", "temperature")
+            }
+            # Include satellite data for better anomaly classification
+            if "no2_satellite" in body:
+                extra["no2_satellite"] = body["no2_satellite"]
+
+            response["anomaly"] = detect_anomaly(last_known_pm25, dt_obj, extra)
+        except Exception as exc:
+            log.warning("Anomaly detection failed inside /api/predict: %s", exc)
+            response["anomaly_error"] = str(exc)
+
     log.info("Predict %dh ahead → %.2f µg/m³ (%s)  [%s]",
              hours_ahead, predicted_pm25, _aqi_label(predicted_pm25), model_name)
 
+    return response, 200
+
+
+@app.route("/api/predict", methods=["POST"])
+def predict():
+    body = request.get_json(force=True, silent=True) or {}
+    response, status = _build_predict_response(body)
+    return jsonify(response), status
+
+
+@app.route("/api/predict-with-anomaly", methods=["POST"])
+def predict_with_anomaly():
+    body = request.get_json(force=True, silent=True) or {}
+    response, status = _build_predict_response(body)
+    return jsonify(response), status
+
+
+# ── Satellite-AQI ─────────────────────────────────────────────────────────────
+@app.route("/api/satellite-aqi", methods=["POST"])
+def satellite_aqi():
+    """
+    POST /api/satellite-aqi
+    Input: { "city": "Delhi", "lat": 28.6, "lon": 77.2, "date": "YYYY-MM-DD" }
+    Output: { "no2_satellite": float, "aqi_prediction": int, "aqi_status": str,
+              "satellite_available": bool, "heatmap_geojson": GeoJSON }
+
+    Derives AQI purely from satellite NO2 — no CSV or trained model required.
+    NO2 mol/m² → µg/m³ (×1e6 × 46.0055 / 22.4) → CPCB sub-index.
+    """
+    body     = request.get_json(force=True, silent=True) or {}
+    city     = body.get("city", "Delhi")
+    lat      = float(body.get("lat", 28.6))
+    lon      = float(body.get("lon", 77.2))
+    date_str = body.get("date")
+
+    # 1. Fetch satellite NO2 grid from GEE
+    satellite_data      = gee.fetch_no2_data(lat, lon, date_str)
+    no2_mol_m2          = 0.0
+    satellite_available = False
+    heatmap_geojson     = {"type": "FeatureCollection", "features": []}
+
+    if satellite_data:
+        satellite_available = True
+        no2_mol_m2 = idw_interpolation(
+            lon, lat,
+            satellite_data["lons"],
+            satellite_data["lats"],
+            satellite_data["no2"],
+        )
+        for i, plat in enumerate(satellite_data["lats"]):
+            for j, plon in enumerate(satellite_data["lons"]):
+                val = satellite_data["no2"][i][j]
+                if val > 0:
+                    heatmap_geojson["features"].append({
+                        "type": "Feature",
+                        "geometry": {"type": "Point", "coordinates": [plon, plat]},
+                        "properties": {"no2": float(val)},
+                    })
+    else:
+        log.warning("Satellite data unavailable for %s (%s, %s)", city, lat, lon)
+
+    # 2. Convert NO2 mol/m² → µg/m³ then → CPCB AQI sub-index
+    #    1 mol NO2 = 46.0055 g; at STP 1 mol = 22.4 L = 22.4e-6 m³
+    #    → µg/m³ = mol/m² × (46.0055 / 22.4e-6) × 1e-6  [column → surface conc approx]
+    #    Simplified: µg/m³ ≈ no2_mol_m2 × 2054
+    no2_ug_m3   = no2_mol_m2 * 2054.0
+    aqi_val     = int(round(_sub_index("no2", no2_ug_m3)))
+    aqi_status  = _aqi_category(aqi_val)
+
+    # 3. If satellite unavailable fall back to a simple Open-Meteo NO2 lookup
+    if not satellite_available:
+        try:
+            resp = http_requests.get(
+                OPEN_METEO_URL,
+                params={"latitude": lat, "longitude": lon,
+                        "current": "nitrogen_dioxide", "timezone": "auto"},
+                timeout=8,
+            )
+            no2_fallback = resp.json().get("current", {}).get("nitrogen_dioxide") or 0.0
+            aqi_val    = int(round(_sub_index("no2", float(no2_fallback))))
+            aqi_status = _aqi_category(aqi_val)
+            log.info("Satellite fallback: Open-Meteo NO2=%.2f µg/m³ → AQI=%d", no2_fallback, aqi_val)
+        except Exception as exc:
+            log.warning("Open-Meteo fallback also failed: %s", exc)
+
+    log.info("satellite-aqi %s → NO2=%.6f mol/m² → AQI=%d (%s)  satellite=%s",
+             city, no2_mol_m2, aqi_val, aqi_status, satellite_available)
+
     return jsonify({
-        "success":              True,
-        "hours_ahead":          hours_ahead,
-        "predicted_pm25":       predicted_pm25,
-        "aqi_status":           _aqi_label(predicted_pm25),
-        "model":                model_name,
-        "last_known_pm25":      last_known_pm25,
-        "last_known_datetime":  last_known_dt,
+        "success":             True,
+        "city":                city,
+        "no2_satellite":       no2_mol_m2,
+        "satellite_available": satellite_available,
+        "aqi_prediction":      aqi_val,
+        "aqi_status":          aqi_status,
+        "heatmap_geojson":     heatmap_geojson,
     }), 200
 
+
+# ── Route AQI  ────────────────────────────────────────────────────────────────
+@app.route("/api/route-aqi", methods=["POST"])
+def route_aqi():
+    """
+    POST /api/route-aqi
+    Input:  { "start_lat", "start_lon", "end_lat", "end_lon" }
+    Output: { "route_coords": [...], "segments": [...], "summary": {...} }
+
+    Uses OSRM for routing + satellite NO2 data for AQI along the path.
+    """
+    from pollution_fusion import fuse_pollution_for_segment
+    import requests as http_requests
+    import math
+
+    body = request.get_json(force=True, silent=True) or {}
+    start_lat = body.get("start_lat")
+    start_lon = body.get("start_lon")
+    end_lat   = body.get("end_lat")
+    end_lon   = body.get("end_lon")
+
+    if not all([start_lat, start_lon, end_lat, end_lon]):
+        return jsonify({"error": "start_lat, start_lon, end_lat, end_lon required"}), 400
+
+    # 1. Get route from OSRM (free, no API key)
+    osrm_url = (
+        f"http://router.project-osrm.org/route/v1/driving/"
+        f"{start_lon},{start_lat};{end_lon},{end_lat}"
+        f"?overview=full&geometries=geojson&steps=true"
+    )
+    try:
+        osrm_resp = http_requests.get(osrm_url, timeout=10).json()
+        if osrm_resp.get("code") != "Ok":
+            return jsonify({"error": "Could not find route", "detail": osrm_resp.get("message")}), 400
+    except Exception as exc:
+        log.error("OSRM routing failed: %s", exc)
+        return jsonify({"error": "Routing service unavailable"}), 503
+
+    route_geom = osrm_resp["routes"][0]["geometry"]["coordinates"]  # [[lon, lat], ...]
+    distance_m = osrm_resp["routes"][0]["distance"]
+    duration_s = osrm_resp["routes"][0]["duration"]
+
+    # 2. Sample data along route at regular intervals
+    # We no longer pre-fetch the satellite bounding box here since fuse_pollution_for_segment 
+    # handles fetching and interpolation internally via the shared GEE instance.
+    def haversine(lat1, lon1, lat2, lon2):
+        R = 6371000
+        p = math.pi / 180
+        a = 0.5 - math.cos((lat2-lat1)*p)/2 + math.cos(lat1*p)*math.cos(lat2*p)*(1-math.cos((lon2-lon1)*p))/2
+        return 2 * R * math.asin(math.sqrt(a))
+
+    def no2_to_aqi_label(no2):
+        """Convert NO2 mol/m² to a safety label and numeric score."""
+        if no2 > 0.0002:
+            return {"aqi": 300, "label": "Hazardous",     "color": "#ef4444", "safe": False}
+        elif no2 > 0.00015:
+            return {"aqi": 200, "label": "Unhealthy",     "color": "#f97316", "safe": False}
+        elif no2 > 0.0001:
+            return {"aqi": 150, "label": "Moderate",      "color": "#eab308", "safe": True}
+        elif no2 > 0.00005:
+            return {"aqi": 75,  "label": "Satisfactory",  "color": "#84cc16", "safe": True}
+        else:
+            return {"aqi": 30,  "label": "Good",          "color": "#22c55e", "safe": True}
+
+    segments = []
+    sampled_aqi = []
+    has_satellite = False
+
+    for i in range(len(route_geom) - 1):
+        lon1, lat1 = route_geom[i]
+        lon2, lat2 = route_geom[i + 1]
+        mid_lat = (lat1 + lat2) / 2
+        mid_lon = (lon1 + lon2) / 2
+        seg_dist = haversine(lat1, lon1, lat2, lon2)
+
+        # Fuse satellite + community reports
+        fusion = fuse_pollution_for_segment(mid_lat, mid_lon, radius_m=500)
+        score = fusion["pollution_score"]  # 0 to 100
+        if fusion["satellite_aqi"] is not None:
+            has_satellite = True
+        
+        # Convert 0-100 score to 0-300 AQI scale for the UI logic
+        aqi_val = score * 3
+        
+        if aqi_val > 200:
+            rating = {"aqi": aqi_val, "label": "Hazardous", "color": "#ef4444", "safe": False}
+        elif aqi_val > 150:
+            rating = {"aqi": aqi_val, "label": "Unhealthy", "color": "#f97316", "safe": False}
+        elif aqi_val > 100:
+            rating = {"aqi": aqi_val, "label": "Moderate", "color": "#eab308", "safe": True}
+        elif aqi_val > 50:
+            rating = {"aqi": aqi_val, "label": "Satisfactory", "color": "#84cc16", "safe": True}
+        else:
+            rating = {"aqi": aqi_val, "label": "Good", "color": "#22c55e", "safe": True}
+
+        sampled_aqi.append(rating["aqi"])
+
+        segments.append({
+            "start": [lat1, lon1],
+            "end":   [lat2, lon2],
+            "fusion": fusion,
+            "aqi":   round(rating["aqi"]),
+            "label": rating["label"],
+            "color": rating["color"],
+            "safe":  rating["safe"],
+            "distance_m": round(seg_dist, 1)
+        })
+
+    # 4. Build summary
+    if sampled_aqi:
+        avg_aqi = sum(sampled_aqi) / len(sampled_aqi)
+        worst_aqi = max(sampled_aqi)
+        best_aqi  = min(sampled_aqi)
+        unsafe_pct = round(100 * sum(1 for s in segments if not s["safe"]) / len(segments), 1)
+    else:
+        avg_aqi = worst_aqi = best_aqi = 0
+        unsafe_pct = 0
+
+    # Overall safety
+    if avg_aqi <= 75:
+        overall = "Safe"
+    elif avg_aqi <= 150:
+        overall = "Moderate"
+    else:
+        overall = "Unsafe"
+
+    return jsonify({
+        "success": True,
+        "satellite_available": has_satellite,
+        "route_distance_km": round(distance_m / 1000, 2),
+        "route_duration_min": round(duration_s / 60, 1),
+        "segments": segments,
+        "summary": {
+            "overall_safety": overall,
+            "avg_aqi": round(avg_aqi, 1),
+            "worst_aqi": worst_aqi,
+            "best_aqi": best_aqi,
+            "unsafe_segments_pct": unsafe_pct,
+            "total_segments": len(segments)
+        }
+    }), 200
 
 # ── Export Report ─────────────────────────────────────────────────────────────
 @app.route("/api/export-report", methods=["GET"])
@@ -1415,6 +1687,169 @@ def chat():
     }), 200
 
 
+# ─────────────────────────────────────────────────────────────────────────────
+# Anomaly Detection Routes
+# ─────────────────────────────────────────────────────────────────────────────
+try:
+    from anomaly_detector import detect_anomaly, train_anomaly_model, load_anomaly_model
+    from anomaly_db import (
+        init_db, insert_anomaly, resolve_anomaly, mark_false_positive,
+        get_recent_anomalies, get_active_anomalies, resolve_city_anomalies,
+        upsert_fcm_token, get_tokens_for_city,
+    )
+    from fcm_notifier import send_anomaly_alert
+    init_db()
+    load_anomaly_model()
+    ANOMALY_AVAILABLE = True
+    log.info("Anomaly detection module loaded.")
+except Exception as _anom_err:
+    ANOMALY_AVAILABLE = False
+    log.warning("Anomaly module unavailable: %s", _anom_err)
+
+
+def _anomaly_unavailable():
+    return jsonify({"success": False, "message": "Anomaly module not available."}), 503
+
+
+@app.route("/api/anomalies/train", methods=["POST"])
+def anomaly_train():
+    """Train the anomaly detection model on the latest uploaded CSV."""
+    if not ANOMALY_AVAILABLE:
+        return _anomaly_unavailable()
+    csv_path = _latest_csv()
+    if not csv_path:
+        return jsonify({"success": False, "message": "No dataset found."}), 404
+    try:
+        df = pd.read_csv(csv_path)
+        # Normalise column names to what anomaly_detector expects
+        raw_pm25 = _detect_col(df.columns.tolist(), PM25_CANDIDATES)
+        raw_date = _detect_col(df.columns.tolist(), DATE_CANDIDATES)
+        if not raw_pm25 or not raw_date:
+            return jsonify({"success": False, "message": "Cannot detect PM2.5 or datetime column."}), 400
+        df = df.rename(columns={raw_pm25: "PM2.5", raw_date: "datetime"})
+        summary = train_anomaly_model(df)
+        return jsonify({"success": True, **summary}), 200
+    except Exception as exc:
+        log.exception("Anomaly training error")
+        return jsonify({"success": False, "message": str(exc)}), 500
+
+
+@app.route("/api/anomalies", methods=["GET"])
+def anomalies_list():
+    """GET /api/anomalies?city=Delhi&days=7"""
+    if not ANOMALY_AVAILABLE:
+        return _anomaly_unavailable()
+    city = request.args.get("city", "Delhi")
+    days = int(request.args.get("days", 7))
+    events = get_recent_anomalies(city=city, days=days)
+    return jsonify({"success": True, "count": len(events), "anomalies": events}), 200
+
+
+@app.route("/api/anomalies/active", methods=["GET"])
+def anomalies_active():
+    """GET /api/anomalies/active?city=Delhi"""
+    if not ANOMALY_AVAILABLE:
+        return _anomaly_unavailable()
+    city   = request.args.get("city") or None
+    events = get_active_anomalies(city=city)
+    return jsonify({"success": True, "count": len(events), "anomalies": events}), 200
+
+
+@app.route("/api/anomalies/check", methods=["POST"])
+def anomalies_check():
+    """
+    POST /api/anomalies/check
+    Body: {
+      "city": "Delhi",
+      "pm25": 340,
+      "datetime": "2024-11-12T20:00:00Z",   // optional, defaults to now
+      "PM10": 420, "NO2": 95, "SO2": 45,
+      "wind_speed": 1.2, "wind_direction": 310, "humidity": 85
+    }
+    """
+    if not ANOMALY_AVAILABLE:
+        return _anomaly_unavailable()
+
+    body = request.get_json(force=True, silent=True) or {}
+    city = body.get("city", "Delhi")
+
+    pm25_val = body.get("pm25") or body.get("PM2.5")
+    if pm25_val is None:
+        return jsonify({"success": False, "message": "'pm25' is required."}), 400
+    pm25_val = float(pm25_val)
+
+    dt_str = body.get("datetime")
+    from datetime import datetime, timezone
+    dt = pd.to_datetime(dt_str, utc=True).to_pydatetime() if dt_str else datetime.now(timezone.utc)
+
+    extra = {
+        k: body.get(k)
+        for k in ("PM10", "NO2", "SO2", "CO", "wind_speed", "wind_direction", "humidity", "temperature")
+    }
+
+    result = detect_anomaly(pm25_val, dt, extra)
+
+    event_id = None
+    if result["is_anomaly"]:
+        event_id = insert_anomaly(
+            city=city,
+            pollutant="PM2.5",
+            observed_value=pm25_val,
+            expected_value=result["expected_value"],
+            anomaly_score=result["anomaly_score"],
+            cause_label=result["cause_label"],
+            cause_confidence=result["cause_confidence"],
+            explanation=result["explanation"],
+        )
+        # Push notification
+        tokens = get_tokens_for_city(city)
+        if tokens:
+            send_anomaly_alert(
+                tokens=tokens,
+                city=city,
+                cause_label=result["cause_label"],
+                cause_confidence=result["cause_confidence"],
+                observed_aqi=pm25_val,
+                expected_aqi=result["expected_value"],
+            )
+    else:
+        # Resolve any open anomalies if values are back to normal
+        resolve_city_anomalies(city)
+
+    return jsonify({"success": True, "event_id": event_id, **result}), 200
+
+
+@app.route("/api/anomalies/<int:anomaly_id>/resolve", methods=["POST"])
+def anomaly_resolve(anomaly_id):
+    if not ANOMALY_AVAILABLE:
+        return _anomaly_unavailable()
+    resolve_anomaly(anomaly_id)
+    return jsonify({"success": True}), 200
+
+
+@app.route("/api/anomalies/<int:anomaly_id>/false-positive", methods=["POST"])
+def anomaly_false_positive(anomaly_id):
+    if not ANOMALY_AVAILABLE:
+        return _anomaly_unavailable()
+    mark_false_positive(anomaly_id)
+    return jsonify({"success": True}), 200
+
+
+@app.route("/api/fcm-token", methods=["POST"])
+def register_fcm_token():
+    """POST /api/fcm-token  Body: {user_id, city, token}"""
+    if not ANOMALY_AVAILABLE:
+        return _anomaly_unavailable()
+    body = request.get_json(force=True, silent=True) or {}
+    user_id = body.get("user_id", "anonymous")
+    city    = body.get("city", "Delhi")
+    token   = body.get("token", "")
+    if not token:
+        return jsonify({"success": False, "message": "'token' is required."}), 400
+    upsert_fcm_token(user_id, city, token)
+    return jsonify({"success": True}), 200
+
+
 # ── Error handlers ────────────────────────────────────────────────────────────
 @app.errorhandler(413)
 def request_entity_too_large(_):
@@ -1423,5 +1858,8 @@ def request_entity_too_large(_):
 
 
 if __name__ == "__main__":
+    from reports_db import run_migrations
+    run_migrations()
+    init_scheduler()
     app.run(debug=True, host="0.0.0.0", port=5000)
 
