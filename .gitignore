@@ -30,10 +30,16 @@ backend/.env
 backend/uploads/*.csv
 backend/models/*.pkl
 backend/.rag_cache/
-backend/data/*.db
-backend/data/*.db-journal
-backend/anomalies.db
+backend/data/
+backend/*.db
+backend/*.db-journal
+backend/*.db-shm
+backend/*.db-wal
 backend/gee_errors.log
+*.db
+*.db-journal
+*.db-shm
+*.db-wal
 
 # IDE
 .vscode/
