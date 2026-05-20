@@ -380,26 +380,39 @@ def safe_navigate():
 
     if src_lat is None or src_lon is None:
         return jsonify({"error": "source.lat/lon required or save a home address in your profile"}), 400
-    if dest_id is None:
-        return jsonify({"error": "destination_id is required"}), 400
 
-    # Fetch destination
-    try:
-        with get_db() as conn:
-            dest = conn.execute(
-                """SELECT id, activity_name, latitude, longitude, address, preferred_transport_mode
-                   FROM user_saved_locations WHERE id = ? AND user_id = ?""",
-                (dest_id, user_id),
-            ).fetchone()
-    except Exception as exc:
-        return jsonify({"error": f"DB error: {exc}"}), 500
+    # Destination — accept either destination_id (saved) or dest_lat/dest_lon (search result)
+    dest_id  = body.get("destination_id")
+    dest_lat = body.get("dest_lat")
+    dest_lon = body.get("dest_lon")
+    dest_name = body.get("dest_name", "Destination")
 
-    if not dest:
-        return jsonify({"error": "Destination not found or access denied"}), 404
-
-    dest_lat  = dest["latitude"]
-    dest_lon  = dest["longitude"]
-    mode      = body.get("transport_mode") or dest["preferred_transport_mode"] or "driving"
+    if dest_id is not None:
+        # Saved location
+        try:
+            with get_db() as conn:
+                dest = conn.execute(
+                    """SELECT id, activity_name, latitude, longitude, address, preferred_transport_mode
+                       FROM user_saved_locations WHERE id = ? AND user_id = ?""",
+                    (dest_id, user_id),
+                ).fetchone()
+        except Exception as exc:
+            return jsonify({"error": f"DB error: {exc}"}), 500
+        if not dest:
+            return jsonify({"error": "Destination not found or access denied"}), 404
+        dest_lat  = dest["latitude"]
+        dest_lon  = dest["longitude"]
+        dest_name = dest["activity_name"]
+        mode      = body.get("transport_mode") or dest["preferred_transport_mode"] or "driving"
+        dest_info = {"id": dest["id"], "name": dest_name, "address": dest["address"], "lat": dest_lat, "lon": dest_lon}
+    elif dest_lat is not None and dest_lon is not None:
+        # Free-text search result
+        dest_lat  = float(dest_lat)
+        dest_lon  = float(dest_lon)
+        mode      = body.get("transport_mode", "driving")
+        dest_info = {"id": None, "name": dest_name, "address": dest_name, "lat": dest_lat, "lon": dest_lon}
+    else:
+        return jsonify({"error": "Provide destination_id or dest_lat+dest_lon"}), 400
     osrm_mode = _OSRM_MODE.get(mode, "driving")
 
     # ── 1. Direct route ───────────────────────────────────────────────────────
@@ -488,12 +501,9 @@ def safe_navigate():
     return jsonify({
         "success":           True,
         "all_routes_unsafe": all_critical,
-        "destination": {
-            "id": dest["id"], "name": dest["activity_name"],
-            "address": dest["address"], "lat": dest_lat, "lon": dest_lon,
-        },
-        "transport_mode":  mode,
-        "weights_used":    weights,
-        "user_threshold":  threshold,
-        "routes":          analyzed,
+        "destination":       dest_info,
+        "transport_mode":    mode,
+        "weights_used":      weights,
+        "user_threshold":    threshold,
+        "routes":            analyzed,
     }), 200

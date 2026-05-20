@@ -79,7 +79,7 @@ tqdm==4.67.1
 regex==2025.11.3
 
 # Push notifications (optional — only needed if FCM is configured)
-# firebase-admin==6.5.0
+firebase-admin==6.5.0
 
 # Anomaly detection
 defusedxml==0.7.1
