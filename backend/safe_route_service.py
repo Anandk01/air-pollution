@@ -122,6 +122,7 @@ def _get_reports_near(lat: float, lon: float, radius_m: float = 300) -> list:
                     "severity": r["severity"], "verified": bool(r["verified"]),
                     "type": r["incident_type"], "dist_m": d,
                     "is_critical": r["incident_type"] in _CRITICAL_INCIDENTS,
+                    "report_lat": r["lat"], "report_lon": r["lon"],
                 })
         return result
     except Exception as exc:
@@ -301,12 +302,13 @@ def _score_route(waypoints: list, weights: dict) -> dict:
         last_checked = (lat, lon)
 
         for rep in _get_reports_near(lat, lon):
-            key = (rep["type"], round(lat, 3), round(lon, 3))
+            # Deduplicate by report's actual location (not waypoint), so 1 report = 1 hazard
+            key = (rep["type"], round(rep["report_lat"], 4), round(rep["report_lon"], 4))
             if key in seen_keys:
                 continue
             seen_keys.add(key)
             unique_hazards.append({
-                "lat": lat, "lon": lon, "type": rep["type"],
+                "lat": rep["report_lat"], "lon": rep["report_lon"], "type": rep["type"],
                 "severity": rep["severity"], "source": "community_report",
                 "critical": rep["is_critical"],
             })
