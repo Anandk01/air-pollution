@@ -385,8 +385,8 @@ export default function Dashboard() {
   ];
 
   // Automation Logic: Smart Alerts & Personalised Threshold
-  const isDangerousForProfile = aqi >= profile.aqiThreshold;
-  const healthConditions = profile.healthConditions.join(" + ");
+  const isDangerousForProfile = aqi >= (profile.aqiThreshold || 150);
+  const healthConditions = (profile.healthConditions || []).join(" + ") || "general sensitivity";
 
   return (
     <div className="admin-main">
@@ -474,7 +474,7 @@ export default function Dashboard() {
 
           <Section title="⏱️ Activity Scheduler" subtitle="Checking your outdoor slots" delay={650}>
             <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-              {profile.locations.filter(l => l.type.includes("Schedule")).map((loc, i) => {
+              {(profile.locations || []).filter(l => l.type && l.type.includes("Schedule")).map((loc, i) => {
                 const isSafe = !isDangerousForProfile;
                 return (
                   <div key={i} style={{ padding: 14, borderRadius: 12, background: "rgba(255,255,255,0.03)", border: isSafe ? "1px solid #22c55e40" : "1px solid #ef444440", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
@@ -488,7 +488,7 @@ export default function Dashboard() {
                   </div>
                 );
               })}
-              <div style={{ fontSize: 11, color: "var(--muted)", textAlign: "center" }}>Syncing with your {profile.locations.length} saved locations</div>
+              <div style={{ fontSize: 11, color: "var(--muted)", textAlign: "center" }}>Syncing with your {(profile.locations || []).length} saved locations</div>
             </div>
           </Section>
         </div>

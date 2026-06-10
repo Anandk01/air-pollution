@@ -34,7 +34,15 @@ export const ProfileProvider = ({ children }) => {
         ? { Authorization: `Bearer ${user.token}` }
         : {};
       const { data } = await axios.get('/api/profile/', { headers });
-      setProfile(data);
+      // Map API snake_case response to our camelCase profile shape
+      setProfile(prev => ({
+        ...prev,
+        ...data,
+        name: data.profile?.full_name || prev.name,
+        healthConditions: (data.health_conditions || []).map(c => c.condition_name || c.name || c),
+        aqiThreshold: data.personal_aqi_threshold || prev.aqiThreshold,
+        locations: data.activities || prev.locations || [],
+      }));
     } catch (e) {
       console.error("Failed to fetch profile from server", e);
     } finally {
