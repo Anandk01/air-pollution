@@ -115,6 +115,8 @@ export default function ActivityLocations() {
       setSelectedGeo({ lat, lon, display_name: 'Current Location (GPS)' });
       setAddressQuery('Current Location (GPS)');
       setSearchResults([]);
+    }, () => {
+      alert('Unable to detect your location. Please allow GPS access or search manually.');
     });
   };
 

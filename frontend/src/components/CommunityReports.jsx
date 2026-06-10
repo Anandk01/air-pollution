@@ -170,8 +170,26 @@ const CommunityReports = () => {
           <h4 style={{ margin: '0 0 16px 0', fontSize: '16px' }}>Report an Incident</h4>
           
           {!draftLocation ? (
-            <div style={{ padding: '16px', background: '#3b82f620', color: '#3b82f6', borderRadius: '12px', textAlign: 'center', fontSize: '14px', fontWeight: 600, border: '1px dashed #3b82f6' }}>
-              📍 Click anywhere on the map to set the location
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+              <button
+                type="button"
+                onClick={() => {
+                  if (navigator.geolocation) {
+                    navigator.geolocation.getCurrentPosition(
+                      pos => setDraftLocation({ lat: pos.coords.latitude, lng: pos.coords.longitude }),
+                      () => alert('Unable to detect location. Please allow GPS access.')
+                    );
+                  } else {
+                    alert('Geolocation is not supported by your browser.');
+                  }
+                }}
+                style={{ padding: '12px', background: 'rgba(34,197,94,0.15)', color: '#22c55e', borderRadius: '12px', border: '1px solid #22c55e', cursor: 'pointer', fontSize: '14px', fontWeight: 600 }}
+              >
+                📍 Use My Current Location
+              </button>
+              <div style={{ padding: '16px', background: '#3b82f620', color: '#3b82f6', borderRadius: '12px', textAlign: 'center', fontSize: '14px', fontWeight: 600, border: '1px dashed #3b82f6' }}>
+                📍 Click anywhere on the map to set the location
+              </div>
             </div>
           ) : (
             <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>

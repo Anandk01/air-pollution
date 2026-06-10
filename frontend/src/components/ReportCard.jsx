@@ -9,7 +9,7 @@ const ReportCard = () => {
     setLoading(true);
     try {
       const response = await fetch('/api/profile/report-card', {
-        headers: { Authorization: `Bearer ${user?.token}` }
+        headers: {}
       });
       if (!response.ok) throw new Error("Failed to generate card");
       
@@ -32,7 +32,7 @@ const ReportCard = () => {
     setLoading(true);
     try {
       const response = await fetch('/api/profile/report-card', {
-        headers: { Authorization: `Bearer ${user?.token}` }
+        headers: {}
       });
       const blob = await response.blob();
       const file = new File([blob], 'report.png', { type: 'image/png' });

@@ -465,6 +465,9 @@ export default function AnomalyDashboard() {
               {checkResult.explanation}
             </div>
           )}
+          {checkResult?.error && (
+            <div style={{ color: '#ef4444', fontSize: 13, marginTop: 8 }}>⚠️ {checkResult.error}</div>
+          )}
         </div>
 
         {/* ── Events table ──────────────────────────────────────────────── */}

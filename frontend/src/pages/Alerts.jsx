@@ -75,7 +75,8 @@ export default function Alerts() {
   const visible = allAlerts.filter(a =>
     (filter === "All" || a.status === filter) &&
     (a.location.toLowerCase().includes(search.toLowerCase()) ||
-     a.pollutant.toLowerCase().includes(search.toLowerCase()))
+     a.pollutant.toLowerCase().includes(search.toLowerCase()) ||
+     (a.description && a.description.toLowerCase().includes(search.toLowerCase())))
   );
 
   return (

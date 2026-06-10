@@ -143,6 +143,7 @@ export default function IndiaMap() {
   };
 
   const fetchAQI = async (city) => {
+    setChatMessages([]);
     setLoadingCity(city.name);
     setSelectedCity(city);
     
@@ -163,7 +164,7 @@ export default function IndiaMap() {
 
   const handleMapClick = (latlng) => {
     const newCity = {
-      name: "Current Spot",
+      name: `${latlng.lat.toFixed(4)}, ${latlng.lng.toFixed(4)}`,
       lat: latlng.lat,
       lon: latlng.lng,
       state: `${latlng.lat.toFixed(4)}, ${latlng.lng.toFixed(4)}`
