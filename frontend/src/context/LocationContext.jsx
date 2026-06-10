@@ -10,7 +10,9 @@ export const LocationProvider = ({ children }) => {
   useEffect(() => {
     const saved = localStorage.getItem('user_location');
     if (saved) {
-      setLocation(jsonSafeParse(saved));
+      const parsed = jsonSafeParse(saved);
+      setLocation(parsed);
+      if (parsed) window._userLocation = parsed;
     } else {
       setAsking(true);
     }
@@ -23,6 +25,7 @@ export const LocationProvider = ({ children }) => {
   const updateLocation = (loc) => {
     setLocation(loc);
     localStorage.setItem('user_location', JSON.stringify(loc));
+    window._userLocation = loc; // Expose for components without context access
     setAsking(false);
   };
 

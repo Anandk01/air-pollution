@@ -119,7 +119,19 @@ export default function RouteAQI() {
     if (!selectedDest) return alert('Please select a destination');
     setLoading(true);
     try {
-      const gps = await getGPS();
+      let gps;
+      try {
+        gps = await getGPS();
+      } catch {
+        // GPS failed — try using LocationContext or profile home
+        if (window._userLocation) {
+          gps = { lat: window._userLocation.lat, lon: window._userLocation.lon };
+        } else {
+          alert('GPS is not available. Please go to Profile → Locations and save your Home Address, then try again.');
+          setLoading(false);
+          return;
+        }
+      }
       setCurrentPos(gps);
       const res = await axios.post('/api/routes/safe-navigate', {
         source: gps,
@@ -131,7 +143,8 @@ export default function RouteAQI() {
       setSelectedRoute(routeList.find(r => r.is_recommended) || routeList[0] || null);
     } catch (err) {
       console.error('Navigation failed', err);
-      alert('Failed to start navigation. Please check GPS permissions.');
+      const msg = err.response?.data?.error || 'Failed to start navigation. Save a Home Address in your Profile first.';
+      alert(msg);
     } finally {
       setLoading(false);
     }

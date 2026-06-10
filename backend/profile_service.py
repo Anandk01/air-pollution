@@ -88,15 +88,18 @@ def get_profile():
 
         threshold = calculate_personal_threshold(user_id)
 
+        # Convert Row to dict for safe .get() access
+        p = dict(profile)
+
         return jsonify({
             "profile": {
-                "full_name": profile['name'] if 'name' in profile.keys() else profile.get('full_name', ''),
-                "age": profile['age'],
-                "gender": profile['gender'],
-                "weight_kg": profile['weight_kg'],
-                "height_cm": profile['height_cm'],
-                "bmi": round(profile['weight_kg'] / ((profile['height_cm']/100)**2), 2) if profile['weight_kg'] and profile['height_cm'] else 0,
-                "is_smoker": bool(profile['smoker'] if 'smoker' in profile.keys() else profile.get('is_smoker', False))
+                "full_name": p.get('name') or p.get('full_name', ''),
+                "age": p.get('age'),
+                "gender": p.get('gender'),
+                "weight_kg": p.get('weight_kg'),
+                "height_cm": p.get('height_cm'),
+                "bmi": round(p['weight_kg'] / ((p['height_cm']/100)**2), 2) if p.get('weight_kg') and p.get('height_cm') else 0,
+                "is_smoker": bool(p.get('smoker') or p.get('is_smoker', False))
             },
             "health_conditions": [dict(c) for c in conditions],
             "locations": locations,
