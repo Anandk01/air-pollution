@@ -40,11 +40,13 @@ export default function Alerts() {
   const [filter, setFilter] = useState("All");
   const [search, setSearch] = useState("");
   const [communityAlerts, setCommunityAlerts] = useState([]);
+  const [anomalyAlerts, setAnomalyAlerts] = useState([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const fetchCommunityReports = async () => {
+    const fetchAll = async () => {
       try {
+        // Fetch community reports
         const { data } = await axios.get("/api/reports/active");
         if (data.success) {
           const mapped = data.reports.map(r => ({
@@ -63,14 +65,34 @@ export default function Alerts() {
         }
       } catch (err) {
         console.error("Failed to fetch community reports", err);
-      } finally {
-        setLoading(false);
       }
+
+      // Fetch anomalies
+      try {
+        const { data: anomData } = await axios.get("/api/anomalies?days=7");
+        if (anomData.success && anomData.anomalies) {
+          const mapped = anomData.anomalies.map(a => ({
+            id: `anom-${a.id}`,
+            location: a.city || "Unknown",
+            pollutant: `PM2.5 (${a.observed_value} µg/m³)`,
+            aqi: Math.round(a.observed_value),
+            level: a.observed_value >= 250 ? "Hazardous" : a.observed_value >= 150 ? "Very Unhealthy" : "Unhealthy",
+            time: new Date(a.detected_at).toLocaleString(),
+            status: a.resolved_at ? "Resolved" : "Active",
+            description: `Anomaly: ${a.cause_label?.replace(/_/g, " ") || "Unknown cause"} (expected ${a.expected_value} µg/m³, got ${a.observed_value} µg/m³)`
+          }));
+          setAnomalyAlerts(mapped);
+        }
+      } catch (err) {
+        console.error("Failed to fetch anomalies", err);
+      }
+
+      setLoading(false);
     };
-    fetchCommunityReports();
+    fetchAll();
   }, []);
 
-  const allAlerts = [...SEED_ALERTS, ...communityAlerts];
+  const allAlerts = [...SEED_ALERTS, ...communityAlerts, ...anomalyAlerts];
 
   const visible = allAlerts.filter(a =>
     (filter === "All" || a.status === filter) &&
