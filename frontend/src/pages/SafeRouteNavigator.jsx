@@ -280,14 +280,26 @@ export default function SafeRouteNavigator() {
       let source = null;
 
       if (useGPS) {
-        const gps = await getGPS();
-        source = gps;
-        setCurrentPos(gps);
+        try {
+          const gps = await getGPS();
+          source = gps;
+          setCurrentPos(gps);
+        } catch {
+          // GPS failed — try LocationContext fallback
+          if (window._userLocation) {
+            source = { lat: window._userLocation.lat, lon: window._userLocation.lon };
+            setCurrentPos(source);
+          }
+        }
       } else if (homePos) {
         source = { lat: homePos.lat, lon: homePos.lon };
         setCurrentPos(source);
+      } else if (window._userLocation) {
+        // Fallback to LocationContext saved location
+        source = { lat: window._userLocation.lat, lon: window._userLocation.lon };
+        setCurrentPos(source);
       }
-      // if neither, backend will use saved home from DB
+      // if still null, backend will try saved home from DB
 
       const res = await axios.post('/api/routes/safe-navigate', {
         ...(source ? { source } : {}),
