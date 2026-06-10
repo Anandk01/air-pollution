@@ -136,19 +136,29 @@ def generate_report_card(user_id: str, aqi: float) -> bytes:
     # Status
     draw.text((540, 680), status, fill=status_color, font=font_small, anchor="mm")
     
-    # Boxes
-    draw.rectangle([(80, 800), (1000, 1000)], fill=(255, 255, 255, 40)) # Simplified for default PIL
+    # Boxes — use dark semi-transparent background so white text is readable
+    box_fill = (20, 50, 90)  # Dark blue box (solid, since RGB mode)
+    draw.rectangle([(80, 800), (1000, 1000)], fill=box_fill, outline=(60, 120, 180))
     draw.text((100, 830), f"Your safe limit: {int(threshold)} AQI", fill=(255, 255, 255), font=font_small)
-    draw.text((100, 900), f"Current: {int(aqi)} AQI ({aqi/threshold:.1f}x over)", fill=(255, 255, 255), font=font_small)
+    draw.text((100, 900), f"Current: {int(aqi)} AQI ({aqi/threshold:.1f}x over)" if aqi > threshold else f"Current: {int(aqi)} AQI (within safe limit)", fill=(255, 255, 255), font=font_small)
     
-    draw.rectangle([(80, 1050), (1000, 1350)], fill=(255, 255, 255, 40))
+    draw.rectangle([(80, 1050), (1000, 1350)], fill=box_fill, outline=(60, 120, 180))
+    
+    # Health tip title
+    draw.text((100, 1070), "💊 Personalized Health Tip:", fill=(100, 200, 255), font=font_small)
     
     # Wrapped Tip
     wrapped_tip = wrap_text(tip, font_small, 880)
-    y_offset = 1100
+    y_offset = 1130
     for line in wrapped_tip:
         draw.text((100, y_offset), line, fill=(255, 255, 255), font=font_small)
-        y_offset += 60
+        y_offset += 55
+        
+    # Health conditions badges
+    conditions_text = ", ".join([c['name'] for c in profile['health_conditions']]) or "None specified"
+    draw.rectangle([(80, 1400), (1000, 1520)], fill=box_fill, outline=(60, 120, 180))
+    draw.text((100, 1420), f"🩺 Conditions: {conditions_text}", fill=(255, 200, 100), font=font_small)
+    draw.text((100, 1470), f"🎯 Personal threshold: {int(threshold)} AQI", fill=(100, 255, 180), font=font_small)
         
     # Footer
     footer_text = f"Generated at {datetime.now().strftime('%I:%M %p')} - Personalized for {name}"
