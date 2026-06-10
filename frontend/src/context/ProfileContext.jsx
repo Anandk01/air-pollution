@@ -28,12 +28,12 @@ export const ProfileProvider = ({ children }) => {
   const { user, isAuthenticated } = useAuth();
 
   const fetchProfile = useCallback(async () => {
-    if (!isAuthenticated || !user?.token) return;
     setLoading(true);
     try {
-      const { data } = await axios.get('/api/auth/profile', {
-        headers: { Authorization: `Bearer ${user.token}` }
-      });
+      const headers = (isAuthenticated && user?.token) 
+        ? { Authorization: `Bearer ${user.token}` }
+        : {};
+      const { data } = await axios.get('/api/profile/', { headers });
       setProfile(data);
     } catch (e) {
       console.error("Failed to fetch profile from server", e);

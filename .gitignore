@@ -73,3 +73,6 @@ backend/*.json
 # Cache
 .cache/
 *.cache
+
+# GEE/Firebase credentials (secrets)
+backend/air-pollution-3499a*.json
