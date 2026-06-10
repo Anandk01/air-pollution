@@ -58,6 +58,14 @@ def run_migrations():
             conn.executescript(sql)
             log.info("Database migration applied: %s", m_file)
 
+        # Ensure guest user exists for unauthenticated access
+        conn.execute(
+            "INSERT OR IGNORE INTO users (id, email, password_hash, is_verified) "
+            "VALUES ('guest_user', 'guest@localhost', 'none', 1)"
+        )
+        conn.commit()
+        log.info("Guest user ensured.")
+
 
 # ── CRUD ──────────────────────────────────────────────────────────────────────
 

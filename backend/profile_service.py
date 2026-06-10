@@ -48,7 +48,6 @@ def get_profile():
             } for row in loc_rows}
             if not locations:
                 locations = {"home": {"address": "Delhi", "lat": 28.6139, "lon": 77.2090, "city": "Delhi"}}
-            from threshold_calculator import calculate_personal_threshold
             return jsonify({
                 "profile": {"full_name": "Guest User", "age": 25, "gender": "Other", "weight_kg": 70, "height_cm": 170, "bmi": 24.2, "is_smoker": False},
                 "health_conditions": [dict(c) for c in conditions],
