@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import axios from "axios";
 import PageHeader from "../components/PageHeader";
+import { useLocation as useUserLocation } from "../context/LocationContext";
 
 const SEED_ALERTS = [
   { id:1,  location:"Sector 4, Dharwad",      pollutant:"PM2.5", aqi:178, level:"Unhealthy",     time:"2026-04-21 22:30", status:"Active"   },
@@ -26,6 +27,7 @@ const LEVEL_COLORS = {
 
 const STATUS_COLORS = {
   "Active":   { bg:"rgba(239,68,68,0.12)", text:"#ef4444" },
+  "Verified": { bg:"rgba(79,142,247,0.12)", text:"#4f8ef7" },
   "Resolved": { bg:"rgba(34,197,94,0.12)", text:"#22c55e" },
 };
 
@@ -42,6 +44,15 @@ export default function Alerts() {
   const [communityAlerts, setCommunityAlerts] = useState([]);
   const [anomalyAlerts, setAnomalyAlerts] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [cityFilter, setCityFilter] = useState("All");
+  const { location: userLocation } = useUserLocation();
+
+  // Auto-select user's city when location is available
+  useEffect(() => {
+    if (userLocation?.city) {
+      setCityFilter(userLocation.city);
+    }
+  }, [userLocation]);
 
   useEffect(() => {
     const fetchAll = async () => {
@@ -94,8 +105,14 @@ export default function Alerts() {
 
   const allAlerts = [...SEED_ALERTS, ...communityAlerts, ...anomalyAlerts];
 
+  // Derive unique city/location names for city filter
+  const cityOptions = ["All", ...(userLocation?.city ? [userLocation.city] : []),
+    ...new Set(allAlerts.map(a => a.location.split(",")[0].trim()))
+  ].filter((v, i, arr) => arr.indexOf(v) === i);
+
   const visible = allAlerts.filter(a =>
     (filter === "All" || a.status === filter) &&
+    (cityFilter === "All" || a.location.toLowerCase().includes(cityFilter.toLowerCase())) &&
     (a.location.toLowerCase().includes(search.toLowerCase()) ||
      a.pollutant.toLowerCase().includes(search.toLowerCase()) ||
      (a.description && a.description.toLowerCase().includes(search.toLowerCase())))
@@ -129,6 +146,17 @@ export default function Alerts() {
             onChange={e => setSearch(e.target.value)}
             style={{ flex: "1 1 220px", maxWidth: 320 }}
           />
+          {/* City filter */}
+          <select
+            className="input-field"
+            value={cityFilter}
+            onChange={e => setCityFilter(e.target.value)}
+            style={{ width: 160, background: "var(--bg-card)", color: "var(--text)", border: "1px solid var(--border)", borderRadius: 10, padding: "8px 12px", fontSize: 13, cursor: "pointer" }}
+          >
+            {cityOptions.map(c => (
+              <option key={c} value={c}>{c === "All" ? "All Locations" : c}</option>
+            ))}
+          </select>
           <div style={{ display: "flex", gap: 6 }}>
             {["All", "Active", "Verified", "Resolved"].map(f => (
               <button key={f} onClick={() => setFilter(f)} style={{

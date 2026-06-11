@@ -188,28 +188,63 @@ export default function AnomalyDashboard() {
 
   // Build chart data: last 7 days hourly buckets + anomaly markers
   const buildChartData = useCallback(async () => {
+    // Try dashboard first (from uploaded CSV)
     try {
       const { data } = await axios.get(`${API}/dashboard`);
-      if (!data.success) return;
-      const trend = (data.recent_trend || []).map(p => ({
-        time: p.time, pm25: p.pm25, is_anomaly: false, cause_label: null,
-      }));
-      // Overlay anomaly markers onto trend points
-      anomalies.forEach(ev => {
-        const evTime = new Date(ev.detected_at);
-        let closest = null, minDiff = Infinity;
-        trend.forEach((p, i) => {
-          const diff = Math.abs(new Date(p.time) - evTime);
-          if (diff < minDiff) { minDiff = diff; closest = i; }
+      if (data.success && data.recent_trend?.length > 0) {
+        const trend = (data.recent_trend || []).map(p => ({
+          time: p.time, pm25: p.pm25, is_anomaly: false, cause_label: null,
+        }));
+        // Overlay anomaly markers onto trend points
+        anomalies.forEach(ev => {
+          const evTime = new Date(ev.detected_at);
+          let closest = null, minDiff = Infinity;
+          trend.forEach((p, i) => {
+            const diff = Math.abs(new Date(p.time) - evTime);
+            if (diff < minDiff) { minDiff = diff; closest = i; }
+          });
+          if (closest !== null && minDiff < 3_600_000) {
+            trend[closest].is_anomaly  = true;
+            trend[closest].cause_label = ev.cause_label;
+          }
         });
-        if (closest !== null && minDiff < 3_600_000) {
-          trend[closest].is_anomaly  = true;
-          trend[closest].cause_label = ev.cause_label;
+        setChartData(trend);
+        return;
+      }
+    } catch { /* no CSV data */ }
+
+    // Fallback: use live hourly data from Open-Meteo
+    try {
+      const cityData = await geocodeCityData(city);
+      if (cityData) {
+        const { data } = await axios.get(`${API}/air-quality`, {
+          params: { city, lat: cityData.lat, lon: cityData.lon }
+        });
+        if (data.hourly?.time && data.hourly?.pm2_5) {
+          const trend = data.hourly.time.slice(-48).map((t, i) => ({
+            time: new Date(t).toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit", hour12: false }),
+            pm25: data.hourly.pm2_5.slice(-48)[i] || 0,
+            is_anomaly: false,
+            cause_label: null,
+          }));
+          // Overlay anomaly markers
+          anomalies.forEach(ev => {
+            const evTime = new Date(ev.detected_at);
+            let closest = null, minDiff = Infinity;
+            trend.forEach((p, i) => {
+              const diff = Math.abs(new Date(p.time) - evTime);
+              if (diff < minDiff) { minDiff = diff; closest = i; }
+            });
+            if (closest !== null && minDiff < 3_600_000) {
+              trend[closest].is_anomaly = true;
+              trend[closest].cause_label = ev.cause_label;
+            }
+          });
+          setChartData(trend);
         }
-      });
-      setChartData(trend);
+      }
     } catch { /* silent */ }
-  }, [anomalies]);
+  }, [anomalies, city]);
 
   useEffect(() => { fetchAnomalies(); }, [fetchAnomalies]);
   useEffect(() => { buildChartData(); }, [buildChartData]);

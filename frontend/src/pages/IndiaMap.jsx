@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from "react";
-import { MapContainer, TileLayer, Marker, Popup, useMapEvents, ZoomControl } from "react-leaflet";
+import { MapContainer, TileLayer, Marker, Popup, useMapEvents, ZoomControl, useMap } from "react-leaflet";
 import L from "leaflet";
 import axios from "axios";
 import { getAqiColor, AQI_COLORS } from "../utils/aqiColors";
@@ -54,6 +54,14 @@ const CITIES = [
 
 function MapEvents({ onMapClick }) {
   useMapEvents({ click: (e) => onMapClick(e.latlng) });
+  return null;
+}
+
+function MapFlyTo({ city }) {
+  const map = useMap();
+  useEffect(() => {
+    if (city) map.flyTo([city.lat, city.lon], 12, { duration: 1.2 });
+  }, [city, map]);
   return null;
 }
 
@@ -119,6 +127,42 @@ export default function IndiaMap() {
   const [chatLoading, setChatLoading] = useState(false);
   const [tempMarker, setTempMarker] = useState(null);
 
+  // Search state
+  const [searchQuery, setSearchQuery] = useState("");
+  const [searchResults, setSearchResults] = useState([]);
+  const [searchLoading, setSearchLoading] = useState(false);
+  const searchDebounce = useRef(null);
+
+  // Nominatim search for any city/village/place in India
+  const handleSearch = (query) => {
+    setSearchQuery(query);
+    if (searchDebounce.current) clearTimeout(searchDebounce.current);
+    searchDebounce.current = setTimeout(async () => {
+      if (query.length < 2) { setSearchResults([]); return; }
+      setSearchLoading(true);
+      try {
+        const res = await axios.get("https://nominatim.openstreetmap.org/search", {
+          params: { q: query, format: "json", limit: 6, countrycodes: "in" }
+        });
+        setSearchResults(res.data.map(r => ({
+          name: r.display_name.split(",")[0],
+          fullName: r.display_name,
+          lat: parseFloat(r.lat),
+          lon: parseFloat(r.lon),
+        })));
+      } catch { setSearchResults([]); }
+      finally { setSearchLoading(false); }
+    }, 350);
+  };
+
+  const selectSearchResult = (result) => {
+    const city = { name: result.name, lat: result.lat, lon: result.lon, state: result.fullName.split(",").slice(1, 3).join(",").trim() };
+    setSearchQuery(result.name);
+    setSearchResults([]);
+    setTempMarker(city);
+    fetchAQI(city);
+  };
+
   const askChatbot = async (city, data) => {
     setChatLoading(true);
     const prompt = `Give me 3 brief, bulleted health precautions and 1 action measure for ${city.name} where the AQI is currently ${data.aqi} (${data.aqi_category}). Keep it concise.`;
@@ -177,9 +221,55 @@ export default function IndiaMap() {
     <div className="page-shell mesh-bg">
       <div className="admin-main" style={{ height: "calc(100vh - 56px)", display: "flex", flexDirection: "column" }}>
         {/* Header */}
-        <div style={{ marginBottom: 20 }}>
+        <div style={{ marginBottom: 16 }}>
           <h1 className="gradient-text" style={{ fontSize: 28, fontWeight: 900, marginBottom: 4 }}>Interactive AQI Map</h1>
-          <p style={{ fontSize: 14, color: "var(--muted)" }}>Click any city or spot on the map to get AI-powered health advice based on live AQI.</p>
+          <p style={{ fontSize: 14, color: "var(--muted)", marginBottom: 12 }}>Search any city/village or click on the map to get AI-powered health advice based on live AQI.</p>
+          
+          {/* Search Bar */}
+          <div style={{ position: "relative", maxWidth: 480 }}>
+            <div style={{ display: "flex", gap: 8 }}>
+              <input
+                type="text"
+                value={searchQuery}
+                onChange={e => handleSearch(e.target.value)}
+                placeholder="🔍 Search any city, town, or village in India..."
+                className="input-field"
+                style={{ flex: 1, padding: "12px 16px", borderRadius: 14, fontSize: 14 }}
+              />
+              {searchLoading && (
+                <div style={{ display: "flex", alignItems: "center", padding: "0 12px" }}>
+                  <div style={{ width: 16, height: 16, borderRadius: "50%", border: "2px solid var(--border)", borderTopColor: "var(--blue)", animation: "spin 0.8s linear infinite" }} />
+                </div>
+              )}
+            </div>
+            
+            {/* Search suggestions dropdown */}
+            {searchResults.length > 0 && (
+              <div style={{
+                position: "absolute", top: "100%", left: 0, right: 0, zIndex: 9999,
+                background: "var(--bg-surface)", border: "1px solid var(--border)",
+                borderRadius: 12, maxHeight: 240, overflowY: "auto", marginTop: 6,
+                boxShadow: "0 8px 32px rgba(0,0,0,0.3)"
+              }}>
+                {searchResults.map((r, i) => (
+                  <div
+                    key={i}
+                    onClick={() => selectSearchResult(r)}
+                    style={{
+                      padding: "12px 16px", cursor: "pointer", fontSize: 13,
+                      borderBottom: i < searchResults.length - 1 ? "1px solid var(--border)" : "none",
+                      transition: "background 0.15s",
+                    }}
+                    onMouseEnter={e => e.currentTarget.style.background = "var(--bg-card)"}
+                    onMouseLeave={e => e.currentTarget.style.background = "transparent"}
+                  >
+                    <div style={{ fontWeight: 600, color: "var(--text)" }}>📍 {r.name}</div>
+                    <div style={{ fontSize: 11, color: "var(--muted)", marginTop: 2 }}>{r.fullName}</div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
         </div>
 
         {/* Content Grid */}
@@ -191,6 +281,7 @@ export default function IndiaMap() {
               <TileLayer url="https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png" />
               <ZoomControl position="bottomright" />
               <MapEvents onMapClick={handleMapClick} />
+              <MapFlyTo city={selectedCity} />
 
               {CITIES.map(city => {
                 const data = aqiData[city.name];
