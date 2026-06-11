@@ -94,6 +94,27 @@ export default function RouteAQI() {
   const [loading, setLoading] = useState(false);
   const [transportMode, setTransportMode] = useState('driving');
 
+  // Check sessionStorage for a search-selected destination (from SatelliteView search bar)
+  useEffect(() => {
+    try {
+      const saved = sessionStorage.getItem('route_destination');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (parsed.lat && parsed.lon) {
+          // Create a virtual location entry for the searched place
+          const searchDest = {
+            id: 'search_dest',
+            activity_name: parsed.label || 'Searched Place',
+            latitude: parsed.lat,
+            longitude: parsed.lon,
+            address: parsed.label || `${parsed.lat.toFixed(4)}, ${parsed.lon.toFixed(4)}`,
+          };
+          setSelectedDest(searchDest);
+        }
+      }
+    } catch { /* ignore */ }
+  }, []);
+
   const fetchLocations = useCallback(async () => {
     try {
       const res = await axios.get('/api/profile/saved-locations');
@@ -135,7 +156,9 @@ export default function RouteAQI() {
       setCurrentPos(gps);
       const res = await axios.post('/api/routes/safe-navigate', {
         source: gps,
-        destination_id: selectedDest.id,
+        ...(selectedDest.id === 'search_dest'
+          ? { dest_lat: selectedDest.latitude, dest_lon: selectedDest.longitude, dest_name: selectedDest.activity_name }
+          : { destination_id: selectedDest.id }),
         transport_mode: transportMode,
       });
       const routeList = res.data.routes || [];

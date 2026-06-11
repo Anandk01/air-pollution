@@ -57,7 +57,7 @@ const SatelliteView = () => {
         </header>
 
         {/* Search bar for any place */}
-        <div className="glass" style={{ padding: '20px', borderRadius: '20px', marginBottom: '24px' }}>
+        <div className="glass" style={{ padding: '20px', borderRadius: '20px', marginBottom: '24px', position: 'relative', zIndex: 100 }}>
           <div style={{ fontSize: '14px', fontWeight: 700, marginBottom: '12px', color: 'var(--text)' }}>
             🔍 Search Any Place (malls, temples, restaurants, parks...)
           </div>
@@ -120,7 +120,7 @@ const SatelliteView = () => {
         </div>
 
         <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: '24px' }}>
-          <RouteAQI />
+          <RouteAQI key={selectedPlace ? `${selectedPlace.lat}-${selectedPlace.lon}` : 'default'} />
           <SatelliteHeatmap />
           
           <div className="glass" style={{ padding: '24px', borderRadius: '24px' }}>
