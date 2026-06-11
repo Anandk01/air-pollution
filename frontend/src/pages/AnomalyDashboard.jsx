@@ -79,6 +79,7 @@ function ChartTooltip({ active, payload, label }) {
 
 export default function AnomalyDashboard() {
   const [anomalies, setAnomalies]   = useState([]);
+  const [communityReports, setCommunityReports] = useState([]);
   const [chartData, setChartData]   = useState([]);
   const [reportCounts, setReportCounts] = useState([]);
   const [activeOnly, setActiveOnly] = useState(false);
@@ -150,6 +151,14 @@ export default function AnomalyDashboard() {
         : `${API}/anomalies?city=${city}&days=${days}`;
       const { data } = await axios.get(url);
       if (data.success) setAnomalies(data.anomalies || []);
+
+      // Also fetch community reports as they count as "events"
+      try {
+        const reportsRes = await axios.get(`${API}/reports/active`);
+        if (reportsRes.data.success) {
+          setCommunityReports(reportsRes.data.reports || []);
+        }
+      } catch { setCommunityReports([]); }
 
       // Fetch city spatial data
       const cityData = await geocodeCityData(city);
@@ -507,18 +516,22 @@ export default function AnomalyDashboard() {
 
         {/* ── Events table ──────────────────────────────────────────────── */}
         <div className="glass animate-slide-up" style={{ borderRadius: 20, overflow: "hidden" }}>
-          <div style={{ padding: "16px 20px", borderBottom: "1px solid var(--border)", fontSize: 14, fontWeight: 600, color: "var(--text)" }}>
-            Anomaly Events
-            <span style={{ marginLeft: 8, fontSize: 12, color: "var(--muted)", fontWeight: 400 }}>
-              {anomalies.length} record{anomalies.length !== 1 ? "s" : ""}
-            </span>
+          <div style={{ padding: "16px 20px", borderBottom: "1px solid var(--border)", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+            <div>
+              <div style={{ fontSize: 16, fontWeight: 700, color: "var(--text)" }}>
+                📍 Anomaly & Incident Events — {city}
+              </div>
+              <div style={{ fontSize: 12, color: "var(--muted)", marginTop: 2 }}>
+                {anomalies.length + communityReports.length} total record{(anomalies.length + communityReports.length) !== 1 ? "s" : ""} ({anomalies.length} system-detected, {communityReports.length} community-reported)
+              </div>
+            </div>
           </div>
 
           {loading ? (
             <div style={{ padding: 40, textAlign: "center", color: "var(--muted)" }}>Loading…</div>
-          ) : anomalies.length === 0 ? (
+          ) : (anomalies.length === 0 && communityReports.length === 0) ? (
             <div style={{ padding: 40, textAlign: "center", color: "var(--muted)" }}>
-              No anomaly events found for {city} in the last {days} day{days !== 1 ? "s" : ""}.
+              No anomaly or incident events found for {city} in the last {days} day{days !== 1 ? "s" : ""}.
             </div>
           ) : (
             <table className="data-table">
@@ -583,6 +596,39 @@ export default function AnomalyDashboard() {
                     </tr>
                   );
                 })}
+                {communityReports.map(rep => (
+                  <tr key={`rep-${rep.id}`}>
+                    <td style={{ color: "var(--muted)", width: 40 }}>R{rep.id}</td>
+                    <td style={{ fontSize: 12, color: "var(--muted)", whiteSpace: "nowrap" }}>
+                      {new Date(rep.reported_at).toLocaleString()}
+                    </td>
+                    <td>
+                      <span style={{ fontWeight: 700, color: "#f97316" }}>
+                        {rep.incident_type?.replace(/_/g, " ")}
+                      </span>
+                    </td>
+                    <td style={{ color: "var(--muted)" }}>Severity: {rep.severity}/5</td>
+                    <td>
+                      <span className="badge" style={{ background: "rgba(249,115,22,0.15)", color: "#f97316" }}>
+                        🚨 Community Report
+                      </span>
+                    </td>
+                    <td style={{ minWidth: 120 }}>
+                      <ConfidenceBar value={rep.trust_score || 0.5} />
+                    </td>
+                    <td>
+                      <span className="badge" style={{
+                        background: rep.verified ? "rgba(34,197,94,0.12)" : "rgba(239,68,68,0.12)",
+                        color: rep.verified ? "#22c55e" : "#ef4444",
+                      }}>
+                        {rep.verified ? "Verified ✓" : "Active"}
+                      </span>
+                    </td>
+                    <td style={{ fontSize: 11, color: "var(--muted)" }}>
+                      {rep.description || "—"}
+                    </td>
+                  </tr>
+                ))}
               </tbody>
             </table>
           )}
