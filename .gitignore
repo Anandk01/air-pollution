@@ -29,7 +29,7 @@ backend/.env
 # Project Specific
 backend/uploads/*.csv
 backend/models/*.pkl
-backend/.rag_cache/
+backend/models/*.pkl
 backend/data/
 backend/*.db
 backend/*.db-journal

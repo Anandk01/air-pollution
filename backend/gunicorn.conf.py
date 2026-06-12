@@ -19,4 +19,4 @@ errorlog  = "-"   # stderr
 loglevel  = "info"
 
 # Preload app to share memory across workers
-preload_app = True
+preload_app = False
