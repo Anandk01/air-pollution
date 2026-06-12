@@ -24,6 +24,7 @@ export default function Navbar() {
   const location                = useLocation();
   const { dark, toggle: toggleTheme } = useTheme();
   const { user, logout, isAuthenticated } = useAuth();
+  const isAdmin = user?.email === "admin@airsight.com";
 
   useEffect(() => setOpen(false), [location]);
 
@@ -83,7 +84,7 @@ export default function Navbar() {
         {/* Desktop nav links */}
         <div style={{ display: "flex", alignItems: "center", gap: 2, marginLeft: "auto", marginRight: 16 }}
              className="hidden-mobile">
-          {NAV_LINKS.map(l => (
+          {NAV_LINKS.filter(l => l.to !== "/admin" || isAdmin).map(l => (
             <NavLink key={l.to} to={l.to} end={l.to === "/"} style={({ isActive }) => ({
               ...linkBase,
               color:        isActive ? "var(--text)" : "var(--muted)",
@@ -177,7 +178,7 @@ export default function Navbar() {
         transition: "max-height 0.3s ease",
       }}>
         <div style={{ padding: "12px 16px", display: "flex", flexDirection: "column", gap: 4 }}>
-          {NAV_LINKS.map(l => (
+          {NAV_LINKS.filter(l => l.to !== "/admin" || isAdmin).map(l => (
             <NavLink key={l.to} to={l.to} end={l.to === "/"} style={({ isActive }) => ({
               ...linkBase, padding: "10px 14px",
               color:      isActive ? "var(--text)" : "var(--muted)",

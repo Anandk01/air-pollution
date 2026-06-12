@@ -1,10 +1,10 @@
-import { BrowserRouter, Routes, Route, useLocation } from "react-router-dom";
+import { BrowserRouter, Routes, Route, Navigate, useLocation } from "react-router-dom";
 import { useEffect } from "react";
 import { ToastProvider } from "./context/ToastContext";
 import { ThemeProvider } from "./context/ThemeContext";
 import { LocationProvider } from "./context/LocationContext";
 import { ProfileProvider } from "./context/ProfileContext";
-import { AuthProvider } from "./context/AuthContext";
+import { AuthProvider, useAuth } from "./context/AuthContext";
 import AppShell       from "./layouts/AppShell";
 import Home           from "./pages/Home";
 import Dashboard      from "./pages/Dashboard";
@@ -28,6 +28,14 @@ function PageTransition({ children }) {
   return <div key={location.pathname} className="page-fade">{children}</div>;
 }
 
+function AdminRoute({ children }) {
+  const { user } = useAuth();
+  if (user?.email !== "admin@airsight.com") {
+    return <Navigate to="/" replace />;
+  }
+  return children;
+}
+
 function RouterShell() {
   return (
     <AppShell>
@@ -44,7 +52,7 @@ function RouterShell() {
           <Route path="/anomalies"   element={<AnomalyDashboard />} />
           <Route path="/satellite"   element={<SatelliteView />} />
           <Route path="/profile"     element={<ProfileForm />} />
-          <Route path="/admin"       element={<Admin />} />
+          <Route path="/admin"       element={<AdminRoute><Admin /></AdminRoute>} />
           <Route path="/safe-routes" element={<SafeRouteNavigator />} />
           <Route path="/community"   element={<CommunityReportsPage />} />
           <Route path="*"            element={<NotFound />} />
