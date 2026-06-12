@@ -167,6 +167,22 @@ def delete_report(report_id):
 
 
 # ─────────────────────────────────────────────────────────────────────────────
+# PATCH /api/reports/<id>/resolve — Mark a report as resolved (deactivate it)
+# ─────────────────────────────────────────────────────────────────────────────
+@reports_bp.route("/api/reports/<int:report_id>/resolve", methods=["PATCH"])
+def resolve_report(report_id):
+    try:
+        with get_db() as conn:
+            row = conn.execute("SELECT id, is_active FROM pollution_reports WHERE id = ?", (report_id,)).fetchone()
+            if not row:
+                return jsonify({"success": False, "error": "Report not found"}), 404
+            conn.execute("UPDATE pollution_reports SET is_active = 0 WHERE id = ?", (report_id,))
+        return jsonify({"success": True, "message": f"Report {report_id} marked as resolved"}), 200
+    except Exception as exc:
+        return jsonify({"success": False, "error": str(exc)}), 500
+
+
+# ─────────────────────────────────────────────────────────────────────────────
 # GET /api/reports/route?polyline=[[lat,lon],[lat,lon],...]
 # ─────────────────────────────────────────────────────────────────────────────
 @reports_bp.route("/api/reports/route", methods=["GET"])

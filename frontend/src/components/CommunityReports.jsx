@@ -359,6 +359,22 @@ const CommunityReports = () => {
                           ✓ Verified by Admin
                         </div>
                       )}
+
+                      {/* Mark as Resolved button — for anyone to indicate issue is gone */}
+                      <button
+                        onClick={async () => {
+                          if (!confirm("Mark this report as resolved? This means the issue is no longer active.")) return;
+                          try {
+                            await axios.patch(`/api/reports/${r.id}/resolve`);
+                            fetchReports();
+                          } catch (err) {
+                            alert("Failed: " + (err.response?.data?.error || err.message));
+                          }
+                        }}
+                        style={{ marginTop: '8px', width: '100%', padding: '6px', background: '#059669', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '12px', fontWeight: 600 }}
+                      >
+                        ✅ Mark as Resolved
+                      </button>
                     </div>
                   </Popup>
                 </Marker>

@@ -206,15 +206,37 @@ export default function IndiaMap() {
     }
   };
 
-  const handleMapClick = (latlng) => {
-    const newCity = {
+  const handleMapClick = async (latlng) => {
+    // Show immediately with coordinates, then update with actual name
+    const tempCity = {
       name: `${latlng.lat.toFixed(4)}, ${latlng.lng.toFixed(4)}`,
       lat: latlng.lat,
       lon: latlng.lng,
-      state: `${latlng.lat.toFixed(4)}, ${latlng.lng.toFixed(4)}`
+      state: "Loading..."
     };
-    setTempMarker(newCity);
-    fetchAQI(newCity);
+    setTempMarker(tempCity);
+    
+    // Reverse geocode to get district/city name
+    try {
+      const { data } = await axios.get("https://nominatim.openstreetmap.org/reverse", {
+        params: { lat: latlng.lat, lon: latlng.lng, format: "json", zoom: 10 }
+      });
+      const district = data.address?.city || data.address?.town || data.address?.county || 
+                       data.address?.state_district || data.address?.village || 
+                       `${latlng.lat.toFixed(4)}, ${latlng.lng.toFixed(4)}`;
+      const state = data.address?.state || "";
+      const updatedCity = {
+        name: district,
+        lat: latlng.lat,
+        lon: latlng.lng,
+        state: state
+      };
+      setTempMarker(updatedCity);
+      fetchAQI(updatedCity);
+    } catch {
+      // Fallback if geocoding fails
+      fetchAQI(tempCity);
+    }
   };
 
   return (
