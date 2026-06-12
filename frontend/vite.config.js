@@ -2,10 +2,11 @@ import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
 
+const API_URL = process.env.VITE_API_URL || "http://localhost:5000";
+
 export default defineConfig({
   plugins: [react(), tailwindcss()],
 
-  // Force Vite to pre-bundle these CJS packages so named ESM exports work in dev
   optimizeDeps: {
     include: ["react-is", "recharts"],
   },
@@ -14,8 +15,22 @@ export default defineConfig({
     port: 5173,
     proxy: {
       "/api": {
-        target: "http://localhost:5000",
+        target: API_URL,
         changeOrigin: true,
+      },
+    },
+  },
+
+  build: {
+    outDir: "dist",
+    sourcemap: false,
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          vendor: ["react", "react-dom", "react-router-dom"],
+          charts: ["recharts"],
+          map: ["leaflet", "react-leaflet"],
+        },
       },
     },
   },
