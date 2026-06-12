@@ -417,10 +417,25 @@ def safe_navigate():
         return jsonify({"error": "Provide destination_id or dest_lat+dest_lon"}), 400
     osrm_mode = _OSRM_MODE.get(mode, "driving")
 
-    # ── 1. Direct route ───────────────────────────────────────────────────────
-    direct = _fetch_osrm_route(osrm_mode, src_lat, src_lon, dest_lat, dest_lon)
-    if not direct:
-        return jsonify({"error": "Routing service unavailable"}), 503
+    # ── 1. Direct route + alternatives ──────────────────────────────────────────
+    # Fetch with alternatives=true to get multiple route options
+    alt_url = f"{OSRM_BASE}/{osrm_mode}/{src_lon},{src_lat};{dest_lon},{dest_lat}?overview=full&geometries=geojson&alternatives=true"
+    raw_routes = []
+    try:
+        alt_resp = http_req.get(alt_url, timeout=12).json()
+        if alt_resp.get("code") == "Ok" and alt_resp.get("routes"):
+            raw_routes = alt_resp["routes"][:3]  # max 3 alternatives
+    except Exception as exc:
+        log.error("OSRM alternatives failed: %s", exc)
+    
+    if not raw_routes:
+        # Fallback to single route
+        direct = _fetch_osrm_route(osrm_mode, src_lat, src_lon, dest_lat, dest_lon)
+        if not direct:
+            return jsonify({"error": "Routing service unavailable"}), 503
+        raw_routes = [direct]
+    
+    direct = raw_routes[0]
 
     # ── 2. Check for critical hazards near the direct route ───────────────────
     critical_hazards = _get_active_critical_hazards()
@@ -429,7 +444,7 @@ def safe_navigate():
                         if _route_passes_near_hazard(direct_coords, [h], radius_m=400)]
 
     # ── 3. Generate avoidance routes for each nearby hazard ───────────────────
-    raw_routes = [direct]
+    # Start with all OSRM alternatives (already in raw_routes from step 1)
     for hazard in nearby_hazards:
         avoid = _find_avoidance_route(
             osrm_mode, src_lat, src_lon, dest_lat, dest_lon,

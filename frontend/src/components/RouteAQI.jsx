@@ -120,11 +120,14 @@ export default function RouteAQI() {
       const res = await axios.get('/api/profile/saved-locations');
       const locs = res.data.locations || [];
       setSavedLocations(locs);
-      if (locs.length > 0 && !selectedDest) setSelectedDest(locs[0]);
+      setSelectedDest(prev => {
+        if (prev) return prev;
+        return locs.length > 0 ? locs[0] : null;
+      });
     } catch (err) {
       console.error('Failed to fetch locations', err);
     }
-  }, [selectedDest]);
+  }, []);
 
   useEffect(() => { fetchLocations(); }, [fetchLocations]);
 

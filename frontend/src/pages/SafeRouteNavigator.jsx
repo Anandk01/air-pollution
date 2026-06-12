@@ -239,7 +239,10 @@ export default function SafeRouteNavigator() {
       const locs = res.data.locations || [];
       setSavedLocations(locs);
       setNoLocations(locs.length === 0);
-      if (locs.length > 0 && !selectedDest) setSelectedDest(locs[0]);
+      setSelectedDest(prev => {
+        if (prev) return prev; // keep existing selection
+        return locs.length > 0 ? locs[0] : null;
+      });
 
       // also fetch home location
       const profRes = await axios.get('/api/profile/');
@@ -248,7 +251,7 @@ export default function SafeRouteNavigator() {
     } catch (err) {
       console.error('Failed to fetch locations', err);
     }
-  }, [selectedDest]);
+  }, []);
 
   useEffect(() => {
     fetchLocations();
