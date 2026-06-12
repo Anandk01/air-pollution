@@ -231,15 +231,19 @@ def _fetch_osrm_route(osrm_mode: str, src_lat, src_lon, dest_lat, dest_lon,
 def _find_avoidance_route(osrm_mode: str, src_lat, src_lon, dest_lat, dest_lon,
                            hazard_lat, hazard_lon) -> dict | None:
     """
-    Try 8 directions × 3 distances around the hazard.
+    Try 8 directions × 4 distances around the hazard.
     Snap each candidate to the nearest road.
-    Return the first OSRM route that does NOT pass within 350m of the hazard.
+    Return the BEST OSRM route that maximizes distance from the hazard.
+    Even if it still passes near the hazard, return the least-bad option.
     """
     hazard = {"lat": hazard_lat, "lon": hazard_lon}
     # 8 compass directions in degrees
     directions = [0, 45, 90, 135, 180, 225, 270, 315]
-    # Try 500m, 800m, 1200m offsets
-    offsets_m  = [500, 800, 1200]
+    # Try increasing offsets — larger city blocks need bigger detours
+    offsets_m  = [500, 800, 1200, 2000]
+
+    best_route = None
+    best_min_dist = 0  # track the route that stays farthest from hazard
 
     for offset_m in offsets_m:
         for bearing_deg in directions:
@@ -255,7 +259,8 @@ def _find_avoidance_route(osrm_mode: str, src_lat, src_lon, dest_lat, dest_lon,
             via_lat, via_lon = snapped
 
             # Skip if snapped point is still too close to hazard
-            if haversine(via_lat, via_lon, hazard_lat, hazard_lon) < 300:
+            snap_dist = haversine(via_lat, via_lon, hazard_lat, hazard_lon)
+            if snap_dist < 200:
                 continue
 
             route = _fetch_osrm_route(osrm_mode, src_lat, src_lon,
@@ -264,12 +269,30 @@ def _find_avoidance_route(osrm_mode: str, src_lat, src_lon, dest_lat, dest_lon,
                 continue
 
             coords = route["geometry"]["coordinates"]
+            
+            # Check if this route avoids the hazard completely (>350m)
             if not _route_passes_near_hazard(coords, [hazard], radius_m=350):
-                log.info("Found avoidance route via bearing=%d° offset=%dm", bearing_deg, offset_m)
+                log.info("Found clean avoidance route via bearing=%d° offset=%dm", bearing_deg, offset_m)
                 route["_is_avoidance"] = True
                 return route
+            
+            # Even if it still passes nearby, track the best option
+            # Calculate minimum distance from hazard along this route
+            min_dist = min(
+                haversine(lat, lon, hazard_lat, hazard_lon)
+                for lon, lat in coords[::max(1, len(coords)//20)]  # sample every ~5%
+            )
+            if min_dist > best_min_dist:
+                best_min_dist = min_dist
+                best_route = route
 
-    log.warning("Could not find avoidance route for hazard at %.5f,%.5f", hazard_lat, hazard_lon)
+    # If we couldn't find a completely clean route, return the least-bad one
+    if best_route:
+        log.info("No clean avoidance found, returning least-bad route (min dist from hazard: %.0fm)", best_min_dist)
+        best_route["_is_avoidance"] = True
+        return best_route
+
+    log.warning("Could not find any avoidance route for hazard at %.5f,%.5f", hazard_lat, hazard_lon)
     return None
 
 
