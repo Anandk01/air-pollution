@@ -335,6 +335,23 @@ const CommunityReports = () => {
                             ✅ Verify
                           </button>
                         )}
+
+                        {isAdmin && (
+                          <button 
+                            onClick={async () => {
+                              if (!confirm("Delete this report permanently?")) return;
+                              try {
+                                await axios.delete(`/api/reports/${r.id}`);
+                                fetchReports();
+                              } catch (err) {
+                                alert("Failed to delete: " + (err.response?.data?.error || err.message));
+                              }
+                            }}
+                            style={{ padding: '6px', background: '#ef4444', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '12px', fontWeight: 600 }}
+                          >
+                            🗑️ Delete
+                          </button>
+                        )}
                       </div>
                       
                       {r.verified && (

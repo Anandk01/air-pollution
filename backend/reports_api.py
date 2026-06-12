@@ -150,6 +150,23 @@ def verify(report_id):
 
 
 # ─────────────────────────────────────────────────────────────────────────────
+# DELETE /api/reports/<id> — Delete a report (admin or reporter)
+# ─────────────────────────────────────────────────────────────────────────────
+@reports_bp.route("/api/reports/<int:report_id>", methods=["DELETE"])
+def delete_report(report_id):
+    try:
+        with get_db() as conn:
+            row = conn.execute("SELECT id FROM pollution_reports WHERE id = ?", (report_id,)).fetchone()
+            if not row:
+                return jsonify({"success": False, "error": "Report not found"}), 404
+            conn.execute("DELETE FROM report_upvotes WHERE report_id = ?", (report_id,))
+            conn.execute("DELETE FROM pollution_reports WHERE id = ?", (report_id,))
+        return jsonify({"success": True, "message": f"Report {report_id} deleted"}), 200
+    except Exception as exc:
+        return jsonify({"success": False, "error": str(exc)}), 500
+
+
+# ─────────────────────────────────────────────────────────────────────────────
 # GET /api/reports/route?polyline=[[lat,lon],[lat,lon],...]
 # ─────────────────────────────────────────────────────────────────────────────
 @reports_bp.route("/api/reports/route", methods=["GET"])

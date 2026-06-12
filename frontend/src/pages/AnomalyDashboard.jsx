@@ -626,6 +626,20 @@ export default function AnomalyDashboard() {
                     </td>
                     <td style={{ fontSize: 11, color: "var(--muted)" }}>
                       {rep.description || "—"}
+                      <button
+                        onClick={async () => {
+                          if (!confirm("Delete this report permanently?")) return;
+                          try {
+                            await axios.delete(`${API}/reports/${rep.id}`);
+                            fetchAnomalies();
+                          } catch {}
+                        }}
+                        style={{
+                          marginLeft: 8, padding: "3px 8px", borderRadius: 6, fontSize: 10,
+                          background: "rgba(239,68,68,0.15)", color: "#ef4444",
+                          border: "1px solid rgba(239,68,68,0.3)", cursor: "pointer",
+                        }}
+                      >🗑️ Delete</button>
                     </td>
                   </tr>
                 ))}
