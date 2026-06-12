@@ -314,6 +314,7 @@ export default function Dashboard() {
   const [errMsg,       setErrMsg]       = useState("");
   const [cities,       setCities]       = useState([]);
   const [selectedCity, setSelectedCity] = useState(DEFAULT_CITY);
+  const [savedLocations, setSavedLocations] = useState([]);
   const { addToast } = useToast();
   const { location: userLocation } = useLocation();
   const { profile } = useProfile();
@@ -323,6 +324,13 @@ export default function Dashboard() {
       setSelectedCity({ name: userLocation.city, lat: userLocation.lat, lon: userLocation.lon });
     }
   }, [userLocation]);
+
+  // Fetch saved activity locations for the scheduler
+  useEffect(() => {
+    axios.get("/api/profile/saved-locations", { timeout: 10_000 })
+      .then(({ data }) => { if (data.locations) setSavedLocations(data.locations); })
+      .catch(() => {});
+  }, []);
 
   useEffect(() => {
     axios.get("/api/cities", { timeout: 10_000 })
@@ -472,23 +480,85 @@ export default function Dashboard() {
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 22, marginBottom: 22 }} className="dash-chart-row">
           <ReportCard />
 
-          <Section title="⏱️ Activity Scheduler" subtitle="Checking your outdoor slots" delay={650}>
+          <Section title="⏱️ Activity Scheduler" subtitle="Your upcoming outdoor activities" delay={650}>
             <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-              {(profile.locations || []).filter(l => l.type && l.type.includes("Schedule")).map((loc, i) => {
-                const isSafe = !isDangerousForProfile;
-                return (
-                  <div key={i} style={{ padding: 14, borderRadius: 12, background: "rgba(255,255,255,0.03)", border: isSafe ? "1px solid #22c55e40" : "1px solid #ef444440", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                    <div>
-                      <div style={{ fontSize: 14, fontWeight: 700 }}>{loc.name}</div>
-                      <div style={{ fontSize: 12, color: "var(--muted)" }}>Slot detected from profile</div>
+              {savedLocations.length === 0 ? (
+                <div style={{ padding: 24, textAlign: "center", color: "var(--muted)" }}>
+                  <div style={{ fontSize: 28, marginBottom: 8 }}>📍</div>
+                  <div style={{ fontSize: 13, marginBottom: 12 }}>No activities scheduled yet.</div>
+                  <a href="/profile" style={{ fontSize: 12, color: "var(--blue)", fontWeight: 600 }}>
+                    + Add locations in your Profile
+                  </a>
+                </div>
+              ) : (
+                savedLocations.map((loc, i) => {
+                  const isSafe = !isDangerousForProfile;
+                  const now = new Date();
+                  const timeStr = loc.preferred_time || "--:--";
+                  const [h, m] = timeStr.split(":").map(Number);
+                  const activityTime = new Date(now);
+                  activityTime.setHours(h || 0, m || 0, 0);
+                  const isUpcoming = activityTime > now;
+                  const isPast = !isUpcoming;
+
+                  return (
+                    <div key={loc.id || i} style={{
+                      padding: 14, borderRadius: 14,
+                      background: "rgba(255,255,255,0.03)",
+                      border: isSafe ? "1px solid rgba(34,197,94,0.25)" : "1px solid rgba(239,68,68,0.25)",
+                      display: "flex", justifyContent: "space-between", alignItems: "center",
+                      opacity: isPast ? 0.5 : 1,
+                    }}>
+                      <div style={{ flex: 1 }}>
+                        <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
+                          <span style={{ fontSize: 18 }}>
+                            {loc.activity_name === "Gym" ? "🏋️" :
+                             loc.activity_name === "Office" ? "💼" :
+                             loc.activity_name === "Hospital" ? "🏥" :
+                             loc.activity_name === "School" ? "🏫" :
+                             loc.activity_name === "Park" ? "🌳" :
+                             loc.activity_name === "Temple" ? "🛕" : "📍"}
+                          </span>
+                          <div style={{ fontSize: 14, fontWeight: 700 }}>{loc.activity_name}</div>
+                        </div>
+                        <div style={{ fontSize: 11, color: "var(--muted)", paddingLeft: 28 }}>
+                          {loc.preferred_time ? `⏰ ${loc.preferred_time}` : "No time set"} · {loc.preferred_transport_mode || "driving"}
+                        </div>
+                        <div style={{ fontSize: 11, color: "var(--muted)", paddingLeft: 28, marginTop: 2 }}>
+                          📌 {loc.address ? loc.address.substring(0, 50) : `${loc.latitude?.toFixed(4)}, ${loc.longitude?.toFixed(4)}`}
+                        </div>
+                      </div>
+                      <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 6 }}>
+                        <span style={{
+                          fontSize: 10, fontWeight: 800, padding: "3px 8px", borderRadius: 6,
+                          background: isSafe ? "rgba(34,197,94,0.15)" : "rgba(239,68,68,0.15)",
+                          color: isSafe ? "#22c55e" : "#ef4444",
+                        }}>
+                          {isSafe ? "SAFE" : "RISKY"}
+                        </span>
+                        <button
+                          onClick={() => {
+                            sessionStorage.setItem('route_destination', JSON.stringify({
+                              lat: loc.latitude, lon: loc.longitude, label: loc.activity_name
+                            }));
+                            window.location.href = '/satellite';
+                          }}
+                          style={{
+                            fontSize: 10, fontWeight: 700, padding: "4px 10px", borderRadius: 8,
+                            background: "rgba(99,102,241,0.15)", color: "#6366f1",
+                            border: "1px solid rgba(99,102,241,0.3)", cursor: "pointer",
+                          }}
+                        >
+                          🚀 Navigate
+                        </button>
+                      </div>
                     </div>
-                    <span style={{ fontSize: 11, fontWeight: 800, padding: "4px 10px", borderRadius: 8, background: isSafe ? "#22c55e20" : "#ef444420", color: isSafe ? "#22c55e" : "#ef4444" }}>
-                      {isSafe ? "SAFE TO GO" : "POSTPONE"}
-                    </span>
-                  </div>
-                );
-              })}
-              <div style={{ fontSize: 11, color: "var(--muted)", textAlign: "center" }}>Syncing with your {(profile.locations || []).length} saved locations</div>
+                  );
+                })
+              )}
+              <div style={{ fontSize: 11, color: "var(--muted)", textAlign: "center", marginTop: 4 }}>
+                {savedLocations.length} saved location{savedLocations.length !== 1 ? "s" : ""} from your profile
+              </div>
             </div>
           </Section>
         </div>
