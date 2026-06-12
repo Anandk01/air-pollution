@@ -3,18 +3,7 @@ import axios from "axios";
 import PageHeader from "../components/PageHeader";
 import { useLocation as useUserLocation } from "../context/LocationContext";
 
-const SEED_ALERTS = [
-  { id:1,  location:"Sector 4, Dharwad",      pollutant:"PM2.5", aqi:178, level:"Unhealthy",     time:"2026-04-21 22:30", status:"Active"   },
-  { id:2,  location:"Andheri, Mumbai",       pollutant:"NO₂",   aqi:142, level:"Moderate",      time:"2026-04-21 22:12", status:"Active"   },
-  { id:3,  location:"MG Road, Bangalore",    pollutant:"PM10",  aqi:116, level:"Moderate",      time:"2026-04-21 21:45", status:"Active"   },
-  { id:4,  location:"Salt Lake, Kolkata",    pollutant:"SO₂",   aqi:203, level:"Very Unhealthy", time:"2026-04-21 21:00", status:"Resolved" },
-  { id:5,  location:"CG Road, Ahmedabad",    pollutant:"CO",    aqi: 89, level:"Satisfactory",  time:"2026-04-21 20:30", status:"Resolved" },
-  { id:6,  location:"Anna Nagar, Chennai",   pollutant:"O₃",    aqi:162, level:"Unhealthy",     time:"2026-04-21 19:55", status:"Active"   },
-  { id:7,  location:"Banjara Hills, Hyd",    pollutant:"PM2.5", aqi:251, level:"Very Unhealthy", time:"2026-04-21 18:40", status:"Active"   },
-  { id:8,  location:"Kothrud, Pune",         pollutant:"NO₂",   aqi: 72, level:"Satisfactory",  time:"2026-04-21 17:20", status:"Resolved" },
-  { id:9,  location:"Vidya Giri, Dharwad",   pollutant:"PM10",  aqi:321, level:"Hazardous",     time:"2026-04-21 16:00", status:"Active"   },
-  { id:10, location:"Powai, Mumbai",         pollutant:"CO",    aqi:134, level:"Moderate",      time:"2026-04-21 15:10", status:"Resolved" },
-];
+const SEED_ALERTS = [];
 
 const LEVEL_COLORS = {
   "Good":          { bg:"rgba(34,197,94,0.12)",  text:"#22c55e" },
@@ -31,13 +20,6 @@ const STATUS_COLORS = {
   "Resolved": { bg:"rgba(34,197,94,0.12)", text:"#22c55e" },
 };
 
-const SUMMARY = [
-  { label:"Total Alerts",    value:10, color:"var(--blue)"   },
-  { label:"Active",          value:6,  color:"var(--red)"    },
-  { label:"Resolved",        value:4,  color:"var(--green)"  },
-  { label:"Hazardous Level", value:1,  color:"var(--purple)" },
-];
-
 export default function Alerts() {
   const [filter, setFilter] = useState("All");
   const [search, setSearch] = useState("");
@@ -47,12 +29,8 @@ export default function Alerts() {
   const [cityFilter, setCityFilter] = useState("All");
   const { location: userLocation } = useUserLocation();
 
-  // Auto-select user's city when location is available
-  useEffect(() => {
-    if (userLocation?.city) {
-      setCityFilter(userLocation.city);
-    }
-  }, [userLocation]);
+  // Don't auto-filter by city — show all alerts by default
+  // Users can manually filter if needed
 
   useEffect(() => {
     const fetchAll = async () => {
@@ -125,9 +103,14 @@ export default function Alerts() {
           subtitle="Monitor air quality threshold alerts across all stations"
         />
 
-        {/* Summary strip */}
+        {/* Summary strip — dynamic based on actual data */}
         <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 14, marginBottom: 24 }}>
-          {SUMMARY.map(s => (
+          {[
+            { label: "Total Alerts",    value: allAlerts.length, color: "var(--blue)" },
+            { label: "Active",          value: allAlerts.filter(a => a.status === "Active").length, color: "var(--red)" },
+            { label: "Resolved",        value: allAlerts.filter(a => a.status === "Resolved").length, color: "var(--green)" },
+            { label: "Hazardous Level", value: allAlerts.filter(a => a.level === "Hazardous").length, color: "var(--purple)" },
+          ].map(s => (
             <div key={s.label} className="glass animate-slide-up" style={{
               borderRadius: 16, padding: "18px 20px", textAlign: "center", animationDelay: "80ms",
             }}>
