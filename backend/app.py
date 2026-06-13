@@ -70,8 +70,13 @@ for d in (UPLOAD_FOLDER, MODEL_FOLDER):
 app = Flask(__name__)
 app.config["UPLOAD_FOLDER"]      = UPLOAD_FOLDER
 app.config["MAX_CONTENT_LENGTH"] = MAX_UPLOAD_MB * 1024 * 1024
-# Enable CORS for all routes so the React frontend on :5173 can talk to us
-CORS(app, resources={r"/api/*": {"origins": "*"}})
+# Enable CORS — allow local dev and the deployed Render frontend
+CORS(app, resources={r"/api/*": {"origins": [
+    "http://localhost:5173",
+    "http://localhost:3000",
+    "https://airguard-frontend-1gfm.onrender.com",
+]}})
+
 
 app.register_blueprint(push_bp, url_prefix="/api/push")
 app.register_blueprint(auth_bp, url_prefix="/api/auth")

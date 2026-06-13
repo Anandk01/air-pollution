@@ -35,7 +35,8 @@ export default function AppShell({ children }) {
   const isAuthPage = location.pathname === "/auth";
 
   useEffect(() => {
-    fetch("/api/health")
+    const base = import.meta.env.VITE_API_URL || "";
+    fetch(`${base}/api/health`)
       .then(r => r.json())
       .then(d => setApiOk(d.status === "ok"))
       .catch(() => setApiOk(false));
