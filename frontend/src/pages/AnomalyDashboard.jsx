@@ -4,10 +4,9 @@ import {
   Tooltip, ResponsiveContainer, ReferenceDot, Legend,
 } from "recharts";
 import axios from "axios";
+import api from "../utils/api";
 import PageHeader from "../components/PageHeader";
 import { useLocation } from "../context/LocationContext";
-
-const API = "http://localhost:5000/api";
 
 const CAUSE_COLORS = {
   FESTIVAL:       { bg: "rgba(168,85,247,0.15)", text: "#a855f7" },
@@ -147,14 +146,14 @@ export default function AnomalyDashboard() {
     setLoading(true);
     try {
       const url = activeOnly
-        ? `${API}/anomalies/active?city=${city}`
-        : `${API}/anomalies?city=${city}&days=${days}`;
-      const { data } = await axios.get(url);
+        ? `/api/anomalies/active?city=${city}`
+        : `/api/anomalies?city=${city}&days=${days}`;
+      const { data } = await api.get(url);
       if (data.success) setAnomalies(data.anomalies || []);
 
       // Also fetch community reports as they count as "events"
       try {
-        const reportsRes = await axios.get(`${API}/reports/active`);
+        const reportsRes = await api.get(`/api/reports/active`);
         if (reportsRes.data.success) {
           setCommunityReports(reportsRes.data.reports || []);
         }
@@ -164,7 +163,7 @@ export default function AnomalyDashboard() {
       const cityData = await geocodeCityData(city);
       if (cityData) {
         // 1. Fetch community reports
-        const reportsRes = await axios.get(`${API}/reports/history?bbox=${cityData.bbox}&days=${days}`);
+        const reportsRes = await api.get(`/api/reports/history?bbox=${cityData.bbox}&days=${days}`);
         if (reportsRes.data.success) {
           const grouped = {};
           reportsRes.data.reports.forEach(r => {
@@ -175,7 +174,7 @@ export default function AnomalyDashboard() {
         }
 
         // 2. Fetch live AQI for recommendation
-        const aqiRes = await axios.get(`${API}/air-quality`, { 
+        const aqiRes = await api.get(`/api/air-quality`, { 
           params: { city: city, lat: cityData.lat, lon: cityData.lon }
         }).catch(() => null);
         if (aqiRes && aqiRes.data) {
@@ -199,7 +198,7 @@ export default function AnomalyDashboard() {
   const buildChartData = useCallback(async () => {
     // Try dashboard first (from uploaded CSV)
     try {
-      const { data } = await axios.get(`${API}/dashboard`);
+      const { data } = await api.get(`/api/dashboard`);
       if (data.success && data.recent_trend?.length > 0) {
         const trend = (data.recent_trend || []).map(p => ({
           time: p.time, pm25: p.pm25, is_anomaly: false, cause_label: null,
@@ -226,7 +225,7 @@ export default function AnomalyDashboard() {
     try {
       const cityData = await geocodeCityData(city);
       if (cityData) {
-        const { data } = await axios.get(`${API}/air-quality`, {
+        const { data } = await api.get(`/api/air-quality`, {
           params: { city, lat: cityData.lat, lon: cityData.lon }
         });
         if (data.hourly?.time && data.hourly?.pm2_5) {
@@ -259,7 +258,7 @@ export default function AnomalyDashboard() {
   useEffect(() => { buildChartData(); }, [buildChartData]);
 
   const handleFalsePositive = async (id) => {
-    await axios.post(`${API}/anomalies/${id}/false-positive`);
+    await api.post(`/api/anomalies/${id}/false-positive`);
     fetchAnomalies();
   };
 
@@ -268,7 +267,7 @@ export default function AnomalyDashboard() {
     setChecking(true);
     setCheckResult(null);
     try {
-      const { data } = await axios.post(`${API}/anomalies/check`, {
+      const { data } = await api.post(`/api/anomalies/check`, {
         city, pm25: parseFloat(manualPm25),
       });
       setCheckResult(data);
@@ -630,7 +629,7 @@ export default function AnomalyDashboard() {
                         onClick={async () => {
                           if (!confirm("Delete this report permanently?")) return;
                           try {
-                            await axios.delete(`${API}/reports/${rep.id}`);
+                            await api.delete(`/api/reports/${rep.id}`);
                             fetchAnomalies();
                           } catch {}
                         }}
