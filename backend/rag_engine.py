@@ -19,7 +19,9 @@ try:
     import fitz                                          # PyMuPDF
     import faiss
     import numpy as np
-    from sentence_transformers import SentenceTransformer
+    import importlib.util
+    if importlib.util.find_spec("sentence_transformers") is None:
+        raise ImportError("sentence_transformers not found")
     RAG_AVAILABLE = True
     log.info("RAG dependencies loaded successfully.")
 except ImportError as _e:
@@ -79,6 +81,7 @@ def _get_embed_model():
     global _embed_model
     if _embed_model is None:
         log.info("Loading embedding model '%s' …", EMBED_MODEL_NAME)
+        from sentence_transformers import SentenceTransformer
         _embed_model = SentenceTransformer(EMBED_MODEL_NAME)
         log.info("Embedding model loaded.")
     return _embed_model

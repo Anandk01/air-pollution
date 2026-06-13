@@ -163,7 +163,7 @@ def segment_route(poly_str: str, duration_min: float) -> list:
         total_dist += haversine(coords[i][0], coords[i][1], coords[i+1][0], coords[i+1][1])
         
     if total_dist == 0:
-        return [{"lat": coords[0][0], "lon": coords[0][1], "time_spent": duration_min}]
+        return [{"lat": coords[0][0], "lon": coords[0][1], "time_spent": duration_min, "time_spent_minutes": duration_min}]
         
     # Walk the polyline and sample every ~100m
     step_m = 100
@@ -177,7 +177,7 @@ def segment_route(poly_str: str, duration_min: float) -> list:
         time_for_edge = duration_min * (dist / total_dist)
         
         if dist < step_m:
-            segments.append({"lat": lat1, "lon": lon1, "time_spent": time_for_edge})
+            segments.append({"lat": lat1, "lon": lon1, "time_spent": time_for_edge, "time_spent_minutes": time_for_edge})
         else:
             chunks = max(1, int(dist / step_m))
             for j in range(chunks):
@@ -185,7 +185,8 @@ def segment_route(poly_str: str, duration_min: float) -> list:
                 segments.append({
                     "lat": lat1 + (lat2 - lat1) * f,
                     "lon": lon1 + (lon2 - lon1) * f,
-                    "time_spent": time_for_edge / chunks
+                    "time_spent": time_for_edge / chunks,
+                    "time_spent_minutes": time_for_edge / chunks
                 })
     return segments
 
@@ -200,8 +201,8 @@ def analyze_routes():
     Body: { "source": {lat, lon}, "destination_id": 5, "mode": "bike" }
     """
     user_id = get_user_id(request)
-    data = request.json
-    source = data.get("source")
+    data = request.json or {}
+    source = data.get("source") or data.get("start")
     dest_id = data.get("destination_id")
     mode = data.get("mode", "driving")
     
@@ -227,7 +228,7 @@ def analyze_routes():
             dest_name = dest['activity_name']
         else:
             # Fallback for manual selection or guest
-            dest_coords = data.get("destination")
+            dest_coords = data.get("destination") or data.get("end")
             if not dest_coords:
                 return jsonify({"error": "Destination required"}), 400
 
@@ -320,3 +321,27 @@ def analyze_routes():
         "routes": analyzed_routes,
         "weights_used": weights
     })
+
+
+def calculate_segment_aqi(satellite_aqi: float, reports: list) -> float:
+    """Calculate segment AQI based on satellite AQI and local reports."""
+    penalty = 0.0
+    for r in reports:
+        weight = 0.35 if r.get("verified") else 0.05
+        penalty += r.get("severity", 0) * 10.0 * weight
+    return satellite_aqi * 0.60 + penalty
+
+
+def get_segment_color(segment_aqi: float, user_threshold: float) -> str:
+    """Get color for segment based on aqi and user threshold."""
+    if segment_aqi > user_threshold:
+        return "red"
+    elif segment_aqi > user_threshold * 0.7:
+        return "yellow"
+    else:
+        return "green"
+
+
+def calculate_route_exposure(*args, **kwargs):
+    pass
+
