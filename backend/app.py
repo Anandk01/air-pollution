@@ -161,6 +161,11 @@ def _round(v, n=4):
 # Routes
 # ─────────────────────────────────────────────────────────────────────────────
 
+@app.route("/", methods=["GET"])
+def root():
+    return jsonify({"status": "ok", "service": "AirGuard Backend", "version": "1.0"}), 200
+
+
 @app.route("/api/health", methods=["GET"])
 def health_check():
     return jsonify({"status": "ok"}), 200
