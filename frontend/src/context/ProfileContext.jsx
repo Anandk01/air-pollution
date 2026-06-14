@@ -54,6 +54,13 @@ export const ProfileProvider = ({ children }) => {
     fetchProfile();
   }, [fetchProfile]);
 
+  // Refetch profile when the window regains focus (user might have changed conditions on profile page)
+  useEffect(() => {
+    const onFocus = () => fetchProfile();
+    window.addEventListener("focus", onFocus);
+    return () => window.removeEventListener("focus", onFocus);
+  }, [fetchProfile]);
+
   const updateProfile = async (updates) => {
     const newProfile = { ...profile, ...updates };
     setProfile(newProfile);
@@ -72,7 +79,7 @@ export const ProfileProvider = ({ children }) => {
   };
 
   return (
-    <ProfileContext.Provider value={{ profile, updateProfile, loading }}>
+    <ProfileContext.Provider value={{ profile, updateProfile, loading, refetchProfile: fetchProfile }}>
       {children}
     </ProfileContext.Provider>
   );
