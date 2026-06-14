@@ -24,7 +24,7 @@ export default function Navbar() {
   const location                = useLocation();
   const { dark, toggle: toggleTheme } = useTheme();
   const { user, logout, isAuthenticated } = useAuth();
-  const isAdmin = user?.email === "admin@airsight.com";
+  const isAdmin = isAuthenticated && user?.email === "admin@airsight.com";
 
   useEffect(() => setOpen(false), [location]);
 
