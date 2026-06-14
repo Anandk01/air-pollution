@@ -46,6 +46,9 @@ export default function AppShell({ children }) {
 
   if (isAuthPage) return <>{children}</>;
 
+  const isAdmin = isAuthenticated && user?.email === "admin@airsight.com";
+  const visibleBottomItems = BOTTOM_ITEMS.filter(item => item.to !== "/admin" || isAdmin);
+
   const sidebarW = collapsed ? 64 : 220;
   const currentPage = ALL_ITEMS.find(n =>
     n.end ? location.pathname === n.to : location.pathname.startsWith(n.to)
@@ -86,7 +89,7 @@ export default function AppShell({ children }) {
         </nav>
 
         <div className="sidebar-bottom">
-          {BOTTOM_ITEMS.map(item => (
+          {visibleBottomItems.map(item => (
             <NavLink
               key={item.to}
               to={item.to}
@@ -137,7 +140,7 @@ export default function AppShell({ children }) {
                         <div style={{ fontSize: 11, opacity: 0.6 }}>{user?.email}</div>
                       </div>
                       <button className="dropdown-item" onClick={() => navigate("/profile")}>👤 Profile</button>
-                      <button className="dropdown-item" onClick={() => navigate("/admin")}>🔧 Admin</button>
+                      {isAdmin && <button className="dropdown-item" onClick={() => navigate("/admin")}>🔧 Admin</button>}
                       <div className="dropdown-divider" />
                       <button className="dropdown-item danger" onClick={logout}>🚪 Logout</button>
                     </>
