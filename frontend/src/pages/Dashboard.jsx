@@ -392,9 +392,19 @@ export default function Dashboard() {
     { icon: "Desert",  label: "Dust", value: current?.dust, unit: "µg/m³", color: "#d97706" },
   ];
 
-  // Automation Logic: Smart Alerts & Personalised Threshold
-  const isDangerousForProfile = aqi >= (profile.aqiThreshold || 150);
+  // Automation Logic: Smart Alerts & Personalised Threshold (graduated levels)
+  const personalThreshold = profile.aqiThreshold || 150;
   const healthConditions = (profile.healthConditions || []).join(" + ") || "general sensitivity";
+  
+  // Graduated risk levels based on how far AQI exceeds personal threshold
+  let alertLevel = null; // null = safe, no banner
+  if (aqi >= personalThreshold * 1.5) {
+    alertLevel = { label: "DANGEROUS FOR YOUR PROFILE", emoji: "🚨", color: "#ef4444", bg: "rgba(239, 68, 68, 0.15)" };
+  } else if (aqi >= personalThreshold * 1.2) {
+    alertLevel = { label: "SLIGHTLY DANGEROUS FOR YOUR PROFILE", emoji: "⚠️", color: "#f97316", bg: "rgba(249, 115, 22, 0.12)" };
+  } else if (aqi >= personalThreshold) {
+    alertLevel = { label: "MODERATE RISK FOR YOUR PROFILE", emoji: "🟡", color: "#eab308", bg: "rgba(234, 179, 8, 0.10)" };
+  }
 
   return (
     <div className="admin-main">
@@ -403,18 +413,18 @@ export default function Dashboard() {
           <button className="btn-secondary" style={{ fontSize: 13 }} onClick={() => load(selectedCity)}>🔄 Refresh</button>
         </PageHeader>
 
-        {/* ⚡ AUTOMATION: Personalised Smart Alert Banner */}
-        {isDangerousForProfile && (
+        {/* ⚡ AUTOMATION: Personalised Smart Alert Banner (graduated) */}
+        {alertLevel && (
           <div className="glass animate-slide-up" style={{ 
             borderRadius: 16, padding: "16px 20px", marginBottom: 24, 
-            background: "rgba(239, 68, 68, 0.15)", border: "1px solid #ef4444",
+            background: alertLevel.bg, border: `1px solid ${alertLevel.color}`,
             display: "flex", alignItems: "center", gap: 16
           }}>
-            <span style={{ fontSize: 32 }}>🚨</span>
+            <span style={{ fontSize: 32 }}>{alertLevel.emoji}</span>
             <div>
-              <div style={{ color: "#ef4444", fontWeight: 800, fontSize: 16 }}>DANGEROUS FOR YOUR PROFILE</div>
+              <div style={{ color: alertLevel.color, fontWeight: 800, fontSize: 16 }}>{alertLevel.label}</div>
               <div style={{ color: "var(--text)", fontSize: 13 }}>
-                Current AQI ({aqi}) exceeds your personal safety threshold ({profile.aqiThreshold}) set due to <strong>{healthConditions}</strong>.
+                Current AQI ({aqi}) exceeds your personal safety threshold ({personalThreshold}) set due to <strong>{healthConditions}</strong>.
               </div>
             </div>
           </div>

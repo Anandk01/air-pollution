@@ -84,13 +84,16 @@ def generate_report_card(user_id: str, aqi: float) -> bytes:
     name = profile['full_name']
     city = profile['city']
     
-    # Determine status
+    # Determine status (graduated levels)
     if aqi <= threshold:
         status = "Safe for your profile"
         status_color = (29, 158, 117)  # Green
-    elif aqi <= threshold * 1.5:
+    elif aqi <= threshold * 1.2:
         status = "Moderate risk"
-        status_color = (239, 159, 39)  # Amber
+        status_color = (234, 179, 8)  # Yellow
+    elif aqi <= threshold * 1.5:
+        status = "Slightly dangerous"
+        status_color = (249, 115, 22)  # Orange
     else:
         status = "Dangerous for your profile"
         status_color = (226, 75, 74)  # Red
