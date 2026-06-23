@@ -232,8 +232,8 @@ export default function UploadDataset() {
   // ── Upload → then auto-train ───────────────────────────────────────────────
   const upload = async () => {
     if (!file) { addToast("Please select a CSV file first.", "error"); return; }
-    if (!file.name.toLowerCase().endsWith(".csv")) {
-      addToast("Only .csv files are accepted.", "error"); return;
+    if (!file.name.toLowerCase().endsWith(".csv") && !file.name.toLowerCase().endsWith(".xlsx") && !file.name.toLowerCase().endsWith(".xls")) {
+      addToast("Only .csv and .xlsx files are accepted.", "error"); return;
     }
 
     // — Step 1: Upload —
@@ -313,7 +313,7 @@ export default function UploadDataset() {
                 background: drag ? "rgba(0,212,255,0.04)" : file ? "rgba(79,142,247,0.04)" : undefined,
               }}
             >
-              <input ref={fileRef} type="file" accept=".csv"
+              <input ref={fileRef} type="file" accept=".csv,.xlsx,.xls"
                 style={{ display: "none" }}
                 onChange={e => handleFile(e.target.files[0])} />
 
@@ -336,7 +336,7 @@ export default function UploadDataset() {
               ) : (
                 <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 12 }}>
                   <div style={{ fontSize: 52 }}>📂</div>
-                  <div style={{ fontSize: 16, fontWeight: 700 }}>Drag &amp; drop your CSV here</div>
+                  <div style={{ fontSize: 16, fontWeight: 700 }}>Drag &amp; drop your CSV or Excel file here</div>
                   <div style={{ fontSize: 13, color: "var(--muted)" }}>or click to browse · Max {MAX_MB} MB</div>
                   <button className="btn-secondary"
                     onClick={e => e.stopPropagation()}

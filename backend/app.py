@@ -60,7 +60,7 @@ log = logging.getLogger(__name__)
 BASE_DIR      = os.path.dirname(__file__)
 UPLOAD_FOLDER = os.path.join(BASE_DIR, "uploads")
 MODEL_FOLDER  = os.path.join(BASE_DIR, "models")
-ALLOWED_EXT   = {"csv"}
+ALLOWED_EXT   = {"csv", "xlsx", "xls"}
 MAX_UPLOAD_MB = 50
 
 for d in (UPLOAD_FOLDER, MODEL_FOLDER):
@@ -130,22 +130,156 @@ if RAG_AVAILABLE and build_index is not None:
 
 # ── Column detection ──────────────────────────────────────────────────────────
 PM25_CANDIDATES = ["pm2_5", "pm25", "PM2.5", "PM25", "pm_2_5", "PM2_5",
-                   "pm2.5", "PM_2_5", "pm 2.5", "PM 2.5", "value"]
+                   "pm2.5", "PM_2_5", "pm 2.5", "PM 2.5", "value",
+                   "PM2.5(ug/m3)", "PM2.5 (ug/m3)", "PM2.5(µg/m³)",
+                   "Concentration", "concentration", "RSPM/PM2.5"]
 DATE_CANDIDATES = ["period.datetimeFrom.utc", "timestamp", "Timestamp", "datetime",
-                   "Datetime", "date", "Date", "DATE", "DATETIME", "time", "Time"]
+                   "Datetime", "date", "Date", "DATE", "DATETIME", "time", "Time",
+                   "From Date", "from date", "To Date", "to date",
+                   "Sampling Date", "sampling date"]
 PARAM_CANDIDATES = ["parameter.name", "parameter", "param", "pollutant"]
 
 
 def _detect_col(columns: list[str], candidates: list[str]) -> str | None:
     col_set = set(columns)
+    # Exact match
     for c in candidates:
         if c in col_set:
             return c
-    lower_map = {c.lower(): c for c in columns}
+    # Case-insensitive exact match
+    lower_map = {c.lower().strip(): c for c in columns}
     for c in candidates:
-        if c.lower() in lower_map:
-            return lower_map[c.lower()]
+        if c.lower().strip() in lower_map:
+            return lower_map[c.lower().strip()]
+    # Partial/contains match (useful for "PM2.5(ug/m3)" style columns)
+    # Only try candidates that are specific enough (length > 3) to avoid false matches
+    for c in candidates:
+        if len(c) > 3:
+            for col in columns:
+                if c.lower() in col.lower() and not col.lower().startswith("unnamed"):
+                    return col
     return None
+
+
+def _fix_cpcb_csv(csv_path: str) -> str:
+    """
+    CPCB (Central Pollution Control Board) CSV files often have metadata rows
+    at the top (e.g., "CENTRAL POLLUTION CONTROL BOARD") which causes pandas
+    to read them as the header, resulting in "Unnamed: 1, 2, 3..." columns.
+    
+    This function detects that pattern and re-saves the CSV with the correct
+    header row so that column names like "PM2.5", "From Date", etc. are properly
+    recognized.
+    """
+    try:
+        df_test = pd.read_csv(csv_path, nrows=5)
+        unnamed_count = sum(1 for c in df_test.columns if str(c).startswith("Unnamed"))
+        
+        # If more than half the columns are "Unnamed:", the real header is in a lower row
+        if unnamed_count <= len(df_test.columns) // 2:
+            return csv_path  # Normal CSV, no fix needed
+        
+        log.info("Detected CPCB-style CSV with metadata rows. Searching for real header...")
+        
+        # Read raw lines to find the actual header row
+        # Look for a row containing known pollution column names
+        header_keywords = ["pm2.5", "pm10", "no2", "so2", "co", "ozone", "o3",
+                          "from date", "to date", "value", "concentration",
+                          "pollutant", "parameter"]
+        
+        # Try rows 0–10 to find the real header
+        for skip_rows in range(0, 15):
+            try:
+                df_trial = pd.read_csv(csv_path, skiprows=skip_rows, nrows=2)
+                cols_lower = [str(c).strip().lower() for c in df_trial.columns]
+                
+                # Check if any known keyword is in the column names
+                matches = sum(1 for kw in header_keywords if any(kw in col for col in cols_lower))
+                unnamed_in_trial = sum(1 for c in cols_lower if c.startswith("unnamed"))
+                
+                if matches >= 1 and unnamed_in_trial < len(cols_lower) // 2:
+                    log.info("Found real header at row %d (matched %d keywords)", skip_rows, matches)
+                    # Re-read with correct header and overwrite the file
+                    df_fixed = pd.read_csv(csv_path, skiprows=skip_rows)
+                    df_fixed.to_csv(csv_path, index=False)
+                    log.info("Re-saved CSV with correct headers: %s", df_fixed.columns.tolist())
+                    return csv_path
+            except Exception:
+                continue
+        
+        log.warning("Could not auto-detect real header row in CPCB CSV")
+    except Exception as exc:
+        log.warning("_fix_cpcb_csv error: %s", exc)
+    
+    return csv_path
+
+
+def _convert_xlsx_to_csv(xlsx_path: str) -> str:
+    """
+    Convert a CPCB-style Excel file to CSV.
+    
+    CPCB xlsx files have ~16 rows of metadata at the top before the actual
+    data header row (containing "From Date", "PM2.5", "PM10", etc. as separate columns).
+    This function detects the real header row and saves clean CSV data.
+    """
+    header_keywords = ["pm2.5", "pm10", "no2", "so2", "co", "ozone",
+                       "from date", "to date"]
+    
+    # Read entire file without header to inspect all rows
+    df_raw = pd.read_excel(xlsx_path, header=None)
+    
+    found_row = None
+    for row_idx in range(min(30, len(df_raw))):
+        row_values = [str(v).strip().lower() for v in df_raw.iloc[row_idx] if pd.notna(v)]
+        # Count how many individual cell values match keywords (not substrings within a cell)
+        matches = sum(1 for kw in header_keywords 
+                      if any(kw == val or kw == val.rstrip() for val in row_values))
+        if matches >= 3:
+            found_row = row_idx
+            log.info("Excel real header found at row %d (matched %d keywords: %s)", 
+                     row_idx, matches, row_values[:5])
+            break
+    
+    if found_row is None:
+        # Fallback: try partial matching (for slightly different formats)
+        for row_idx in range(min(30, len(df_raw))):
+            row_values = [str(v).strip().lower() for v in df_raw.iloc[row_idx] if pd.notna(v)]
+            matches = sum(1 for kw in header_keywords 
+                          if any(kw in val and "," not in val for val in row_values))
+            if matches >= 2:
+                found_row = row_idx
+                log.info("Excel header found (partial match) at row %d", row_idx)
+                break
+    
+    if found_row is not None:
+        # Use the found row as header
+        df = pd.read_excel(xlsx_path, skiprows=found_row, header=0)
+    else:
+        log.warning("Could not detect header row in xlsx, reading from row 0")
+        df = pd.read_excel(xlsx_path)
+    
+    # Drop completely empty rows
+    df = df.dropna(how="all")
+    
+    # Remove any metadata rows that snuck in (rows where "From Date" column has non-date text)
+    if "From Date" in df.columns:
+        # Keep only rows where "From Date" looks like a date
+        date_col = df["From Date"].astype(str)
+        mask = date_col.str.contains(r"\d{2}-\d{2}-\d{4}|\d{4}-\d{2}-\d{2}", na=False)
+        if mask.sum() > 0:
+            df = df[mask].reset_index(drop=True)
+    
+    # Save as CSV
+    csv_path = xlsx_path.rsplit(".", 1)[0] + ".csv"
+    df.to_csv(csv_path, index=False)
+    log.info("Converted xlsx → csv: %s (%d rows, columns: %s)",
+             os.path.basename(csv_path), len(df), df.columns.tolist())
+    
+    # Remove original xlsx
+    if os.path.exists(xlsx_path):
+        os.remove(xlsx_path)
+    
+    return csv_path
 
 
 def _latest_csv() -> str | None:
@@ -186,11 +320,24 @@ def upload_csv():
     if not file.filename:
         return jsonify({"success": False, "message": "No file selected."}), 400
     if not _allowed_file(file.filename):
-        return jsonify({"success": False, "message": "Only .csv files are accepted."}), 400
+        return jsonify({"success": False, "message": "Only .csv and .xlsx files are accepted."}), 400
 
     filename  = secure_filename(file.filename)
     save_path = os.path.join(UPLOAD_FOLDER, filename)
     file.save(save_path)
+
+    # If xlsx/xls, convert to CSV (handling CPCB multi-header format)
+    if filename.lower().endswith((".xlsx", ".xls")):
+        try:
+            save_path = _convert_xlsx_to_csv(save_path)
+            filename = os.path.basename(save_path)
+        except Exception as exc:
+            if os.path.exists(save_path):
+                os.remove(save_path)
+            return jsonify({"success": False, "message": f"Cannot parse Excel file: {exc}"}), 400
+
+    # Fix CPCB-style CSVs that have metadata rows before the real header
+    save_path = _fix_cpcb_csv(save_path)
 
     try:
         df = pd.read_csv(save_path)
@@ -219,6 +366,7 @@ def get_analytics():
         return jsonify({"success": False,
                         "message": "No dataset found. Upload a CSV first."}), 404
     try:
+        csv_path = _fix_cpcb_csv(csv_path)
         df = pd.read_csv(csv_path)
         pm25_col = _detect_col(df.columns.tolist(), PM25_CANDIDATES)
         date_col = _detect_col(df.columns.tolist(), DATE_CANDIDATES)
@@ -288,6 +436,9 @@ def train_models():
     if not csv_path:
         return jsonify({"success": False,
                         "message": "No dataset found. Upload a CSV first."}), 404
+
+    # Fix CPCB-style CSVs with metadata rows
+    csv_path = _fix_cpcb_csv(csv_path)
 
     # ── 1. Load ───────────────────────────────────────────────────────────────
     try:
