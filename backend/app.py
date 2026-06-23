@@ -181,37 +181,37 @@ def _fix_cpcb_csv(csv_path: str) -> str:
         
         log.info("Detected CPCB-style CSV with metadata rows. Searching for real header...")
         
-        # Read entire CSV without header to scan all rows
         header_keywords = ["pm2.5", "pm10", "no2", "so2", "co", "ozone", "o3",
                           "from date", "to date"]
         
-        df_raw = pd.read_csv(csv_path, header=None)
+        # Read raw lines from the file to find the header row
+        with open(csv_path, 'r', encoding='utf-8', errors='ignore') as f:
+            raw_lines = f.readlines()
         
         found_row = None
-        for row_idx in range(min(30, len(df_raw))):
-            row_values = [str(v).strip().lower() for v in df_raw.iloc[row_idx] if pd.notna(v)]
-            # Count exact cell matches (not substring within a comma-separated cell)
-            matches = sum(1 for kw in header_keywords 
-                          if any(kw == val or kw == val.rstrip() for val in row_values))
+        for row_idx, line in enumerate(raw_lines[:30]):
+            # Split by comma and check individual cell values
+            cells = [c.strip().strip('"').lower() for c in line.split(',')]
+            matches = sum(1 for kw in header_keywords if kw in cells)
             if matches >= 3:
                 found_row = row_idx
-                log.info("Found real header at row %d (matched %d keywords: %s)", 
-                         row_idx, matches, row_values[:6])
+                log.info("Found real header at line %d (matched %d keywords: %s)", 
+                         row_idx, matches, cells[:6])
                 break
         
         if found_row is None:
-            # Fallback: partial matching (for slightly different column names)
-            for row_idx in range(min(30, len(df_raw))):
-                row_values = [str(v).strip().lower() for v in df_raw.iloc[row_idx] if pd.notna(v)]
+            # Fallback: partial matching
+            for row_idx, line in enumerate(raw_lines[:30]):
+                cells = [c.strip().strip('"').lower() for c in line.split(',')]
                 matches = sum(1 for kw in header_keywords 
-                              if any(kw in val and "," not in val for val in row_values))
+                              if any(kw in cell and ',' not in cell for cell in cells))
                 if matches >= 2:
                     found_row = row_idx
-                    log.info("Found real header (partial) at row %d", row_idx)
+                    log.info("Found real header (partial) at line %d", row_idx)
                     break
         
         if found_row is not None:
-            # Re-read with correct header row
+            # Re-read CSV starting from the header row
             df_fixed = pd.read_csv(csv_path, skiprows=found_row, header=0)
             # Drop completely empty rows
             df_fixed = df_fixed.dropna(how="all")
