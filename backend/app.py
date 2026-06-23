@@ -181,31 +181,50 @@ def _fix_cpcb_csv(csv_path: str) -> str:
         
         log.info("Detected CPCB-style CSV with metadata rows. Searching for real header...")
         
-        # Read raw lines to find the actual header row
-        # Look for a row containing known pollution column names
+        # Read entire CSV without header to scan all rows
         header_keywords = ["pm2.5", "pm10", "no2", "so2", "co", "ozone", "o3",
-                          "from date", "to date", "value", "concentration",
-                          "pollutant", "parameter"]
+                          "from date", "to date"]
         
-        # Try rows 0–10 to find the real header
-        for skip_rows in range(0, 15):
-            try:
-                df_trial = pd.read_csv(csv_path, skiprows=skip_rows, nrows=2)
-                cols_lower = [str(c).strip().lower() for c in df_trial.columns]
-                
-                # Check if any known keyword is in the column names
-                matches = sum(1 for kw in header_keywords if any(kw in col for col in cols_lower))
-                unnamed_in_trial = sum(1 for c in cols_lower if c.startswith("unnamed"))
-                
-                if matches >= 1 and unnamed_in_trial < len(cols_lower) // 2:
-                    log.info("Found real header at row %d (matched %d keywords)", skip_rows, matches)
-                    # Re-read with correct header and overwrite the file
-                    df_fixed = pd.read_csv(csv_path, skiprows=skip_rows)
-                    df_fixed.to_csv(csv_path, index=False)
-                    log.info("Re-saved CSV with correct headers: %s", df_fixed.columns.tolist())
-                    return csv_path
-            except Exception:
-                continue
+        df_raw = pd.read_csv(csv_path, header=None)
+        
+        found_row = None
+        for row_idx in range(min(30, len(df_raw))):
+            row_values = [str(v).strip().lower() for v in df_raw.iloc[row_idx] if pd.notna(v)]
+            # Count exact cell matches (not substring within a comma-separated cell)
+            matches = sum(1 for kw in header_keywords 
+                          if any(kw == val or kw == val.rstrip() for val in row_values))
+            if matches >= 3:
+                found_row = row_idx
+                log.info("Found real header at row %d (matched %d keywords: %s)", 
+                         row_idx, matches, row_values[:6])
+                break
+        
+        if found_row is None:
+            # Fallback: partial matching (for slightly different column names)
+            for row_idx in range(min(30, len(df_raw))):
+                row_values = [str(v).strip().lower() for v in df_raw.iloc[row_idx] if pd.notna(v)]
+                matches = sum(1 for kw in header_keywords 
+                              if any(kw in val and "," not in val for val in row_values))
+                if matches >= 2:
+                    found_row = row_idx
+                    log.info("Found real header (partial) at row %d", row_idx)
+                    break
+        
+        if found_row is not None:
+            # Re-read with correct header row
+            df_fixed = pd.read_csv(csv_path, skiprows=found_row, header=0)
+            # Drop completely empty rows
+            df_fixed = df_fixed.dropna(how="all")
+            # If there's a "From Date" column, filter out non-date metadata rows
+            if "From Date" in df_fixed.columns:
+                date_col = df_fixed["From Date"].astype(str)
+                mask = date_col.str.contains(r"\d{2}[-/]\d{2}[-/]\d{4}|\d{4}[-/]\d{2}[-/]\d{2}", na=False)
+                if mask.sum() > 0:
+                    df_fixed = df_fixed[mask].reset_index(drop=True)
+            df_fixed.to_csv(csv_path, index=False)
+            log.info("Re-saved CSV with correct headers (%d rows): %s", 
+                     len(df_fixed), df_fixed.columns.tolist())
+            return csv_path
         
         log.warning("Could not auto-detect real header row in CPCB CSV")
     except Exception as exc:
