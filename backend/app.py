@@ -172,47 +172,66 @@ def _fix_cpcb_csv(csv_path: str) -> str:
     recognized.
     """
     try:
-        df_test = pd.read_csv(csv_path, nrows=5)
-        unnamed_count = sum(1 for c in df_test.columns if str(c).startswith("Unnamed"))
-        
-        # If more than half the columns are "Unnamed:", the real header is in a lower row
-        if unnamed_count <= len(df_test.columns) // 2:
-            return csv_path  # Normal CSV, no fix needed
-        
-        log.info("Detected CPCB-style CSV with metadata rows. Searching for real header...")
-        
-        header_keywords = ["pm2.5", "pm10", "no2", "so2", "co", "ozone", "o3",
-                          "from date", "to date"]
-        
-        # Read raw lines from the file to find the header row
+        # Read raw lines to check if file has CPCB metadata headers
         with open(csv_path, 'r', encoding='utf-8', errors='ignore') as f:
             raw_lines = f.readlines()
         
+        if not raw_lines:
+            return csv_path
+        
+        # Use Python's csv module to properly parse (handles quoted fields)
+        import csv
+        import io
+        
+        header_keywords = ["pm2.5", "pm10", "no2", "so2", "co", "ozone", "o3",
+                          "from date", "to date", "concentration", "value"]
+        
+        # Quick check: does the first line look like a normal header?
+        reader = csv.reader(io.StringIO(raw_lines[0]))
+        first_cells = [c.strip().lower() for c in next(reader, [])]
+        first_line_matches = sum(1 for kw in header_keywords if kw in first_cells)
+        
+        if first_line_matches >= 2 and len(first_cells) >= 5:
+            return csv_path  # Normal CSV with proper headers already
+        
+        log.info("Checking if CSV needs CPCB header fix...")
+        
         found_row = None
         for row_idx, line in enumerate(raw_lines[:30]):
-            # Split by comma and check individual cell values
-            cells = [c.strip().strip('"').lower() for c in line.split(',')]
+            # Use csv module to correctly parse quoted fields
+            reader = csv.reader(io.StringIO(line))
+            cells = [c.strip().lower() for c in next(reader, [])]
+            
+            # The real header row should:
+            # 1. Have multiple keyword matches as SEPARATE columns
+            # 2. Have many columns (at least 5+)
             matches = sum(1 for kw in header_keywords if kw in cells)
-            if matches >= 3:
+            if matches >= 3 and len(cells) >= 5:
                 found_row = row_idx
-                log.info("Found real header at line %d (matched %d keywords: %s)", 
-                         row_idx, matches, cells[:6])
+                log.info("Found real header at line %d (matched %d keywords, %d columns: %s)", 
+                         row_idx, matches, len(cells), cells[:6])
                 break
         
         if found_row is None:
-            # Fallback: partial matching
+            # Fallback: partial matching for columns like "PM2.5(ug/m3)"
             for row_idx, line in enumerate(raw_lines[:30]):
-                cells = [c.strip().strip('"').lower() for c in line.split(',')]
+                reader = csv.reader(io.StringIO(line))
+                cells = [c.strip().lower() for c in next(reader, [])]
                 matches = sum(1 for kw in header_keywords 
-                              if any(kw in cell and ',' not in cell for cell in cells))
-                if matches >= 2:
+                              if any(kw in cell for cell in cells))
+                if matches >= 2 and len(cells) >= 5:
                     found_row = row_idx
                     log.info("Found real header (partial) at line %d", row_idx)
                     break
         
-        if found_row is not None:
-            # Re-read CSV starting from the header row
-            df_fixed = pd.read_csv(csv_path, skiprows=found_row, header=0)
+        if found_row is not None and found_row > 0:
+            # Re-write the file starting from the header row
+            with open(csv_path, 'w', encoding='utf-8') as f:
+                f.writelines(raw_lines[found_row:])
+            log.info("Stripped %d metadata rows from CSV", found_row)
+            
+            # Now read and clean up
+            df_fixed = pd.read_csv(csv_path)
             # Drop completely empty rows
             df_fixed = df_fixed.dropna(how="all")
             # If there's a "From Date" column, filter out non-date metadata rows
