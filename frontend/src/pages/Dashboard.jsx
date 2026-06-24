@@ -502,7 +502,7 @@ export default function Dashboard() {
                 </div>
               ) : (
                 savedLocations.map((loc, i) => {
-                  const isSafe = !isDangerousForProfile;
+                  const isSafe = aqi < (profile.aqiThreshold || 150);
                   const now = new Date();
                   const timeStr = loc.preferred_time || "--:--";
                   const [h, m] = timeStr.split(":").map(Number);
