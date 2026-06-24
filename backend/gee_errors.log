@@ -1,2 +1,14 @@
 2026-05-14 17:58:51,691 - ERROR - GEE Authentication failed: ee.Initialize: no project found. Call with project= or see http://goo.gle/ee-auth.
 2026-05-14 17:59:24,236 - ERROR - GEE Authentication failed: Caller does not have required permission to use project air-pollution-3499a. Grant the caller the roles/serviceusage.serviceUsageConsumer role, or a custom role with the serviceusage.services.use permission, by visiting https://console.developers.google.com/iam-admin/iam?project=air-pollution-3499a and then retry. Propagation of the new permission may take a few minutes.
+2026-06-10 23:38:55,900 - ERROR - GEE_SERVICE_ACCOUNT_FILE not found or not set: None
+2026-06-10 23:38:55,908 - ERROR - GEE_SERVICE_ACCOUNT_FILE not found or not set: None
+2026-06-10 23:47:34,005 - ERROR - GEE_SERVICE_ACCOUNT_FILE not found or not set: None
+2026-06-10 23:47:34,011 - ERROR - GEE_SERVICE_ACCOUNT_FILE not found or not set: None
+2026-06-10 23:48:06,347 - ERROR - GEE_SERVICE_ACCOUNT_FILE not found or not set: None
+2026-06-10 23:48:06,350 - ERROR - GEE_SERVICE_ACCOUNT_FILE not found or not set: None
+2026-06-10 23:49:00,223 - ERROR - GEE_SERVICE_ACCOUNT_FILE not found or not set: None
+2026-06-10 23:49:00,225 - ERROR - GEE_SERVICE_ACCOUNT_FILE not found or not set: None
+2026-06-10 23:54:45,090 - ERROR - GEE_SERVICE_ACCOUNT_FILE not found or not set: None
+2026-06-10 23:54:45,460 - ERROR - GEE_SERVICE_ACCOUNT_FILE not found or not set: None
+2026-06-10 23:55:50,875 - ERROR - GEE_SERVICE_ACCOUNT_FILE not found or not set: None
+2026-06-10 23:55:50,925 - ERROR - GEE_SERVICE_ACCOUNT_FILE not found or not set: None
