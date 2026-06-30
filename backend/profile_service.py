@@ -220,11 +220,38 @@ def get_report_card():
     if not user_id:
         return jsonify({"error": "Unauthorized"}), 401
     
-    # Get current AQI (fallback to 120 for demo if not provided)
+    # Get current AQI — try query param first, then fetch live for user's home city
     aqi = request.args.get('aqi', type=float)
     if not aqi:
-        # In a real app, you'd fetch live data for the user's home city
-        aqi = 120.0 
+        # Fetch live AQI for user's home city
+        try:
+            with get_db() as conn:
+                home = conn.execute(
+                    "SELECT latitude, longitude, city FROM user_locations WHERE user_id=? AND location_type='home'",
+                    (user_id,)
+                ).fetchone()
+            if home and home['latitude'] and home['longitude']:
+                import requests as http_req
+                resp = http_req.get(
+                    "https://air-quality-api.open-meteo.com/v1/air-quality",
+                    params={"latitude": home['latitude'], "longitude": home['longitude'],
+                            "current": "pm2_5", "timezone": "auto"},
+                    timeout=8
+                )
+                if resp.ok:
+                    pm25 = resp.json().get("current", {}).get("pm2_5", 0) or 0
+                    # Convert PM2.5 to approximate CPCB AQI
+                    if pm25 <= 30: aqi = pm25 * 50 / 30
+                    elif pm25 <= 60: aqi = 50 + (pm25 - 30) * 50 / 30
+                    elif pm25 <= 90: aqi = 100 + (pm25 - 60) * 100 / 30
+                    elif pm25 <= 120: aqi = 200 + (pm25 - 90) * 100 / 30
+                    elif pm25 <= 250: aqi = 300 + (pm25 - 120) * 100 / 130
+                    else: aqi = 400 + (pm25 - 250) * 100 / 250
+                    aqi = round(aqi)
+        except Exception:
+            pass
+        if not aqi:
+            aqi = 50.0  # safe default instead of 120
     
     image_bytes = generate_report_card(user_id, aqi)
     if not image_bytes:
