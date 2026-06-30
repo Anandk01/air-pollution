@@ -488,7 +488,7 @@ export default function Dashboard() {
 
         {/* ⚡ AUTOMATION: Personalized Report & Schedule */}
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 22, marginBottom: 22 }} className="dash-chart-row">
-          <ReportCard />
+          <ReportCard aqi={aqi} city={aqiData?.city || selectedCity?.name || "Your City"} />
 
           <Section title="⏱️ Activity Scheduler" subtitle="Your upcoming outdoor activities" delay={650}>
             <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>

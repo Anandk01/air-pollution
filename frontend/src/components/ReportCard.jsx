@@ -1,16 +1,21 @@
 import React, { useState } from 'react';
 import { useAuth } from '../context/AuthContext';
 
-const ReportCard = () => {
+const ReportCard = ({ aqi, city }) => {
   const { user } = useAuth();
   const [loading, setLoading] = useState(false);
+
+  const getUrl = () => {
+    const params = new URLSearchParams();
+    if (aqi) params.set('aqi', Math.round(aqi));
+    if (city) params.set('city', city);
+    return `/api/profile/report-card?${params.toString()}`;
+  };
 
   const downloadCard = async () => {
     setLoading(true);
     try {
-      const response = await fetch('/api/profile/report-card', {
-        headers: {}
-      });
+      const response = await fetch(getUrl(), { headers: {} });
       if (!response.ok) throw new Error("Failed to generate card");
       
       const blob = await response.blob();
@@ -31,9 +36,7 @@ const ReportCard = () => {
   const shareWhatsApp = async () => {
     setLoading(true);
     try {
-      const response = await fetch('/api/profile/report-card', {
-        headers: {}
-      });
+      const response = await fetch(getUrl(), { headers: {} });
       const blob = await response.blob();
       const file = new File([blob], 'report.png', { type: 'image/png' });
       

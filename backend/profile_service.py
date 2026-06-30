@@ -222,6 +222,7 @@ def get_report_card():
     
     # Get current AQI — try query param first, then fetch live for user's home city
     aqi = request.args.get('aqi', type=float)
+    city_override = request.args.get('city', type=str)
     if not aqi:
         # Fetch live AQI for user's home city
         try:
@@ -253,7 +254,7 @@ def get_report_card():
         if not aqi:
             aqi = 50.0  # safe default instead of 120
     
-    image_bytes = generate_report_card(user_id, aqi)
+    image_bytes = generate_report_card(user_id, aqi, city_override=city_override)
     if not image_bytes:
         return jsonify({"error": "Failed to generate card"}), 500
         

@@ -76,13 +76,13 @@ def get_health_tip(conditions: list, aqi: float, threshold: float) -> str:
     
     return "Air quality is poor. Limit outdoor activities and stay in well-ventilated indoor spaces."
 
-def generate_report_card(user_id: str, aqi: float) -> bytes:
+def generate_report_card(user_id: str, aqi: float, city_override: str = None) -> bytes:
     profile = get_report_profile(user_id)
     if not profile: return None
     
     threshold = profile['personal_aqi_threshold']
     name = profile['full_name']
-    city = profile['city']
+    city = city_override or profile['city']
     
     # Determine status (graduated levels)
     if aqi <= threshold:
